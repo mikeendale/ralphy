@@ -157,6 +157,7 @@ Example: "Add user authentication" becomes `ralphy/add-user-authentication`
 ./ralphy.sh --codex      # Codex CLI
 ./ralphy.sh --opencode   # OpenCode
 ./ralphy.sh --cursor     # Cursor agent
+./ralphy.sh --qwen       # Qwen-Code
 ```
 
 ### Engine Details
@@ -167,6 +168,7 @@ Example: "Add user authentication" becomes `ralphy/add-user-authentication`
 | OpenCode | `opencode` | `OPENCODE_PERMISSION='{"*":"allow"}'` | Token usage + actual cost |
 | Codex | `codex` | N/A | Token usage (if provided) |
 | Cursor | `agent` | `--force` | API duration (no token counts) |
+| Qwen-Code | `qwen` | N/A | Token usage (if provided) |
 
 **Note:** Cursor's CLI doesn't expose token usage, so Ralphy tracks total API duration instead.
 
@@ -179,6 +181,7 @@ Example: "Add user authentication" becomes `ralphy/add-user-authentication`
 | `--codex` | Use Codex CLI |
 | `--opencode` | Use OpenCode |
 | `--cursor`, `--agent` | Use Cursor agent |
+| `--qwen` | Use Qwen-Code |
 
 ### Task Source
 | Flag | Description |
@@ -242,6 +245,9 @@ Example: "Add user authentication" becomes `ralphy/add-user-authentication`
 # Cursor with parallel execution
 ./ralphy.sh --cursor --parallel --max-parallel 4
 
+# Use Qwen-Code
+./ralphy.sh --qwen
+
 # Parallel with 4 agents and auto-PRs
 ./ralphy.sh --parallel --max-parallel 4 --create-pr
 
@@ -284,6 +290,9 @@ At completion, Ralphy shows different metrics depending on the AI engine:
 All engines show branches created (if using `--branch-per-task`).
 
 ## Changelog
+
+### v3.2.0
+- Added Qwen-Code support (`--qwen` flag)
 
 ### v3.1.0
 - Added Cursor agent support (`--cursor` or `--agent` flag)

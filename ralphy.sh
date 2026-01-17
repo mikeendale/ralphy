@@ -8,6 +8,7 @@
 
 set -euo pipefail
 
+
 # ============================================
 # CONFIGURATION & DEFAULTS
 # ============================================
@@ -17,7 +18,7 @@ VERSION="3.1.0"
 # Runtime options
 SKIP_TESTS=false
 SKIP_LINT=false
-AI_ENGINE="claude"  # claude, opencode, cursor, or codex
+AI_ENGINE="claude"  # claude, opencode, cursor, codex, or qwen
 DRY_RUN=false
 MAX_ITERATIONS=0  # 0 = unlimited
 MAX_RETRIES=3
@@ -119,6 +120,7 @@ ${BOLD}AI ENGINE OPTIONS:${RESET}
   --opencode          Use OpenCode
   --cursor            Use Cursor agent
   --codex             Use Codex CLI
+  --qwen              Use Qwen-Code
 
 ${BOLD}WORKFLOW OPTIONS:${RESET}
   --no-tests          Skip writing and running tests
@@ -216,6 +218,10 @@ parse_args() {
         ;;
       --codex)
         AI_ENGINE="codex"
+        shift
+        ;;
+      --qwen)
+        AI_ENGINE="qwen"
         shift
         ;;
       --dry-run)
@@ -352,6 +358,12 @@ check_requirements() {
     cursor)
       if ! command -v agent &>/dev/null; then
         log_error "Cursor agent CLI not found. Make sure Cursor is installed and 'agent' is in your PATH."
+        exit 1
+      fi
+      ;;
+    qwen)
+      if ! command -v qwen &>/dev/null; then
+        log_error "Qwen-Code CLI not found. Make sure 'qwen' is in your PATH."
         exit 1
       fi
       ;;
@@ -900,6 +912,12 @@ run_ai_command() {
         --output-format stream-json \
         "$prompt" > "$output_file" 2>&1 &
       ;;
+    qwen)
+      # Qwen-Code: use CLI with JSON format and auto-approve tools
+      qwen --output-format stream-json \
+        --approval-mode yolo \
+        -p "$prompt" > "$output_file" 2>&1 &
+      ;;
     codex)
       CODEX_LAST_MESSAGE_FILE="${output_file}.last"
       rm -f "$CODEX_LAST_MESSAGE_FILE"
@@ -980,6 +998,17 @@ parse_ai_result() {
       # Tokens remain 0 for Cursor (not available)
       input_tokens=0
       output_tokens=0
+      ;;
+    qwen)
+      # Qwen-Code stream-json parsing (similar to Claude Code)
+      local result_line
+      result_line=$(echo "$result" | grep '"type":"result"' | tail -1)
+
+      if [[ -n "$result_line" ]]; then
+        response=$(echo "$result_line" | jq -r '.result // "No result text"' 2>/dev/null || echo "Could not parse result")
+        input_tokens=$(echo "$result_line" | jq -r '.usage.input_tokens // 0' 2>/dev/null || echo "0")
+        output_tokens=$(echo "$result_line" | jq -r '.usage.output_tokens // 0' 2>/dev/null || echo "0")
+      fi
       ;;
     codex)
       if [[ -n "$CODEX_LAST_MESSAGE_FILE" ]] && [[ -f "$CODEX_LAST_MESSAGE_FILE" ]]; then
@@ -1387,6 +1416,14 @@ Focus only on implementing: $task_name"
             "$prompt"
         ) > "$tmpfile" 2>>"$log_file"
         ;;
+      qwen)
+        (
+          cd "$worktree_dir"
+          qwen --output-format stream-json \
+            --approval-mode yolo \
+            -p "$prompt"
+        ) > "$tmpfile" 2>>"$log_file"
+        ;;
       codex)
         (
           cd "$worktree_dir"
@@ -1574,7 +1611,7 @@ run_parallel_tasks() {
       for ((i = batch_start; i < batch_end; i++)); do
         local task="${tasks[$i]}"
         local agent_num=$((iteration + 1))
-        ((iteration++))
+        iteration=$((iteration + 1))
 
         local status_file=$(mktemp)
         local output_file=$(mktemp)
@@ -1856,6 +1893,11 @@ Be careful to preserve functionality from BOTH branches. The goal is to integrat
                 --output-format stream-json \
                 "$resolve_prompt" > "$resolve_tmpfile" 2>&1
               ;;
+            qwen)
+              qwen --output-format stream-json \
+                --approval-mode yolo \
+                -p "$resolve_prompt" > "$resolve_tmpfile" 2>&1
+              ;;
             codex)
               codex exec --full-auto \
                 --json \
@@ -1991,6 +2033,7 @@ main() {
     opencode) engine_display="${CYAN}OpenCode${RESET}" ;;
     cursor) engine_display="${YELLOW}Cursor Agent${RESET}" ;;
     codex) engine_display="${BLUE}Codex${RESET}" ;;
+    qwen) engine_display="${GREEN}Qwen-Code${RESET}" ;;
     *) engine_display="${MAGENTA}Claude Code${RESET}" ;;
   esac
   echo "Engine: $engine_display"
@@ -2020,7 +2063,7 @@ main() {
 
   # Sequential main loop
   while true; do
-    ((iteration++))
+    iteration=$((iteration + 1))
     local result_code=0
     run_single_task "" "$iteration" || result_code=$?
     
