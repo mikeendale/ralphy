@@ -1842,15 +1842,15 @@ run_parallel_tasks() {
           else
             # Delete failed integration branch
             git branch -D "$integration_branch" >/dev/null 2>&1 || true
-            log_warn "Integration merge failed; next group will branch from original BASE_BRANCH"
+            log_warn "Integration merge failed; next group will branch from current BASE_BRANCH ($BASE_BRANCH)"
           fi
         else
           # Couldn't checkout, clean up the branch
           git branch -D "$integration_branch" >/dev/null 2>&1 || true
-          log_warn "Could not checkout integration branch; next group will branch from original BASE_BRANCH"
+          log_warn "Could not checkout integration branch; next group will branch from current BASE_BRANCH ($BASE_BRANCH)"
         fi
       else
-        log_warn "Could not create integration branch; next group will branch from original BASE_BRANCH"
+        log_warn "Could not create integration branch; next group will branch from current BASE_BRANCH ($BASE_BRANCH)"
       fi
     fi
 
