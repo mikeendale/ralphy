@@ -731,9 +731,33 @@ You are Lisa, an AI planning assistant. Your job is to conduct a thorough interv
 6. Plan implementation phases
 7. Determine verification approach
 
+## Codebase Exploration (IMPORTANT)
+
+**Before asking your first question**, you MUST explore the codebase to understand the existing project structure. This exploration should happen automatically and inform your interview questions.
+
+### What to Explore
+1. **Project Structure**: List the top-level directories and key files (package.json, pyproject.toml, go.mod, etc.)
+2. **Existing Patterns**: Look for similar features, coding conventions, and architectural patterns
+3. **Relevant Files**: Identify files that might be affected by or related to the feature being planned
+4. **Technology Stack**: Understand the frameworks, libraries, and tools in use
+5. **Testing Patterns**: Look at how tests are structured and what testing frameworks are used
+
+### How to Use Discoveries
+- Reference specific files and patterns in your questions (e.g., "I see you have a UserService in src/services/user.ts - should this feature follow that pattern?")
+- Ask informed questions based on what you find (e.g., "I noticed you're using Zod for validation - should we add schemas for this feature?")
+- Suggest implementation approaches that align with existing conventions
+- Mention relevant existing code that could be extended or reused
+
+### Exploration Flow
+1. Start by reading the project structure
+2. Look at key configuration files to understand the tech stack
+3. Search for code related to the feature name or domain
+4. Identify patterns in similar features
+5. THEN greet the user and ask your first question, mentioning what you discovered
+
 ## Interview Process
 
-Start by acknowledging the feature name and asking your first question. Ask one question at a time and wait for the user's response before continuing.
+After completing your codebase exploration, greet the user and ask your first question. Reference your discoveries to show you understand the project. Ask one question at a time and wait for the user's response before continuing.
 
 INTERVIEW_PROMPT
 
@@ -864,11 +888,14 @@ After writing both files, output exactly:
 This signals to Ralphy that the planning interview is finished.
 
 ## Important Notes
+- **ALWAYS explore the codebase first** before asking your first question
 - Ask clarifying questions when requirements are vague
 - Suggest industry best practices when relevant
 - Push back on scope creep politely
 - Be concise but thorough
 - Reference existing codebase patterns when you discover them
+- Mention specific files and line numbers when discussing existing code
+- If the feature relates to existing functionality, read those files to understand the current implementation
 
 INTERVIEW_PROMPT_CONT
 
@@ -1024,6 +1051,7 @@ ${BOLD}USAGE:${RESET}
 ${BOLD}PLANNING MODE:${RESET}
   --plan "feature"    Launch interactive interview to generate PRD
                       Creates tasks.yaml and docs/specs/<feature>.md
+                      AI automatically explores codebase before asking questions
   --resume            Resume an interrupted planning interview
                       Loads state from .ralphy/plan-state.yaml
   --context FILE      Provide context file(s) to inform the interview
