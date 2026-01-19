@@ -860,6 +860,33 @@ You are Lisa, an AI planning assistant. Your job is to conduct a thorough interv
 
 After completing your codebase exploration, greet the user and ask your first question. Reference your discoveries to show you understand the project. Ask one question at a time and wait for the user's response before continuing.
 
+## CRITICAL: Interactive Questions
+
+**You MUST use the AskUserQuestion tool for EVERY question you ask.**
+Plain text questions will NOT work - the user cannot respond to them.
+
+When asking questions:
+- Use AskUserQuestion with 2-4 options per question
+- Keep headers short (max 12 chars)
+- Provide clear descriptions for each option
+- Use multiSelect: true when multiple answers are valid
+
+Example AskUserQuestion format:
+{
+  "questions": [{
+    "question": "How should errors be handled in this feature?",
+    "header": "Errors",
+    "multiSelect": false,
+    "options": [
+      {"label": "Show toast", "description": "Non-blocking notification"},
+      {"label": "Modal dialog", "description": "Blocking alert requiring action"},
+      {"label": "Inline error", "description": "Error message near the field"}
+    ]
+  }]
+}
+
+Continue asking questions one at a time until the user says "done", "that's all", or "finalize".
+
 INTERVIEW_PROMPT
 
   # Add first-principles phase if enabled
@@ -947,7 +974,7 @@ Rules for tasks.yaml:
 - No implementation details in acceptance criteria
 
 ### File 2: Markdown Spec
-Write to: ./docs/specs/FEATURE_SLUG.md
+Write to: ./.ralphy/specs/FEATURE_SLUG.md
 
 ```markdown
 # Feature Name
@@ -1060,14 +1087,25 @@ The user is resuming a previously interrupted planning interview.
 "
   fi
 
-  # Create docs/specs directory if needed
-  mkdir -p docs/specs
+  # Create .ralphy/specs directory if needed
+  mkdir -p .ralphy/specs
+
+  # Create dynamic command file with AskUserQuestion enabled (for Claude)
+  mkdir -p .claude/commands
+  cat > .claude/commands/_plan.md << EOF
+---
+description: Planning interview for $feature_name
+allowed-tools: AskUserQuestion, Read, Write, Glob, Grep, Bash
+---
+
+$prompt
+EOF
 
   # Launch AI in interactive mode (NO --dangerously-skip-permissions)
   case "$AI_ENGINE" in
     claude)
       log_info "Launching Claude Code in interactive mode..."
-      echo "$prompt" | claude --print
+      claude "/_plan"
       ;;
     opencode)
       log_info "Launching OpenCode in interactive mode..."
@@ -1105,7 +1143,7 @@ The user is resuming a previously interrupted planning interview.
       log_warn "tasks.yaml was not generated"
     fi
 
-    local spec_file="docs/specs/${feature_slug}.md"
+    local spec_file=".ralphy/specs/${feature_slug}.md"
     if [[ -f "$spec_file" ]]; then
       log_success "Generated: $spec_file"
     else
