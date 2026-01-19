@@ -27,6 +27,7 @@ AUTO_COMMIT=true
 # Plan mode (Lisa integration)
 PLAN_MODE=false
 PLAN_FEATURE=""
+declare -a PLAN_CONTEXT_FILES=()  # Context files for --plan mode
 
 # Runtime options
 SKIP_TESTS=false
@@ -571,6 +572,50 @@ run_brownfield_task() {
 # PLAN MODE (LISA INTEGRATION)
 # ============================================
 
+# Load and format context files for the interview prompt
+load_plan_context() {
+  local context_output=""
+
+  if [[ ${#PLAN_CONTEXT_FILES[@]} -eq 0 ]]; then
+    return
+  fi
+
+  context_output+="## Provided Context Files
+
+The user has provided the following files to inform this planning session. Review these carefully as they contain important context, requirements, or constraints.
+
+"
+
+  for file in "${PLAN_CONTEXT_FILES[@]}"; do
+    local filename
+    filename=$(basename "$file")
+    local extension="${filename##*.}"
+
+    context_output+="### File: $file
+\`\`\`$extension
+"
+    # Read file contents (limit to 50000 chars to avoid overwhelming the prompt)
+    local content
+    content=$(head -c 50000 "$file" 2>/dev/null || cat "$file")
+    context_output+="$content"
+
+    # Add truncation notice if file was large
+    local file_size
+    file_size=$(wc -c < "$file" 2>/dev/null || echo 0)
+    if [[ $file_size -gt 50000 ]]; then
+      context_output+="
+... (truncated, file exceeds 50000 characters)"
+    fi
+
+    context_output+="
+\`\`\`
+
+"
+  done
+
+  echo "$context_output"
+}
+
 # Build the interview prompt for plan mode
 build_plan_interview_prompt() {
   local feature_name="$1"
@@ -709,6 +754,14 @@ This signals to Ralphy that the planning interview is finished.
 
 INTERVIEW_PROMPT
 
+  # Add context files if provided
+  local context
+  context=$(load_plan_context)
+  if [[ -n "$context" ]]; then
+    echo ""
+    echo "$context"
+  fi
+
   # Add feature-specific context
   echo ""
   echo "## Feature Being Planned"
@@ -826,6 +879,8 @@ ${BOLD}USAGE:${RESET}
 ${BOLD}PLANNING MODE:${RESET}
   --plan "feature"    Launch interactive interview to generate PRD
                       Creates tasks.yaml and docs/specs/<feature>.md
+  --context FILE      Provide context file(s) to inform the interview
+                      Supports .md, .txt, .yaml, .json (can use multiple times)
 
 ${BOLD}CONFIG & SETUP:${RESET}
   --init              Initialize .ralphy/ with smart defaults
@@ -880,6 +935,8 @@ ${BOLD}EXAMPLES:${RESET}
   # Plan mode (generate PRD from interview)
   ./ralphy.sh --plan "user authentication" # Launch planning interview
   ./ralphy.sh --plan "dark mode" --opencode # Plan with OpenCode
+  ./ralphy.sh --plan "api v2" --context docs/api-spec.md  # Plan with context
+  ./ralphy.sh --plan "migration" --context old.yaml --context new.yaml
 
   # Brownfield mode (single tasks in existing projects)
   ./ralphy.sh --init                       # Initialize config
@@ -1052,6 +1109,29 @@ parse_args() {
           echo "Usage: ./ralphy.sh --plan \"feature name\""
           exit 1
         fi
+        ;;
+      --context)
+        if [[ -z "${2:-}" ]] || [[ "$2" =~ ^- ]]; then
+          log_error "--context requires a file path argument"
+          exit 1
+        fi
+        # Validate file exists and has supported extension
+        if [[ ! -f "$2" ]]; then
+          log_error "Context file not found: $2"
+          exit 1
+        fi
+        # Check for supported file types (.md, .txt, .yaml, .json)
+        case "$2" in
+          *.md|*.txt|*.yaml|*.yml|*.json)
+            PLAN_CONTEXT_FILES+=("$2")
+            ;;
+          *)
+            log_error "Unsupported context file type: $2"
+            log_info "Supported types: .md, .txt, .yaml, .yml, .json"
+            exit 1
+            ;;
+        esac
+        shift 2
         ;;
       --no-commit)
         AUTO_COMMIT=false
