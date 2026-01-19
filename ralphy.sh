@@ -320,6 +320,12 @@ boundaries:
     # - "src/legacy/**"
     # - "migrations/**"
     # - "*.lock"
+
+# Capabilities - optional tool integrations
+capabilities:
+  # Browser automation via agent-browser (https://agent-browser.dev)
+  # Values: "auto" (detect), "true" (force enable), "false" (disable)
+  browser: "auto"
 EOF
 
   # Create progress.txt
@@ -353,6 +359,19 @@ load_ralphy_boundaries() {
 
   if command -v yq &>/dev/null; then
     yq -r ".boundaries.$boundary_type // [] | .[]" "$CONFIG_FILE" 2>/dev/null || true
+  fi
+}
+
+# Load browser setting from config.yaml
+load_browser_setting() {
+  [[ ! -f "$CONFIG_FILE" ]] && echo "auto" && return
+
+  if command -v yq &>/dev/null; then
+    local setting
+    setting=$(yq -r '.capabilities.browser // "auto"' "$CONFIG_FILE" 2>/dev/null || echo "auto")
+    echo "$setting"
+  else
+    echo "auto"
   fi
 }
 
@@ -417,6 +436,21 @@ show_ralphy_config() {
       done
       echo ""
     fi
+
+    # Capabilities
+    local browser_setting
+    browser_setting=$(yq -r '.capabilities.browser // "auto"' "$CONFIG_FILE" 2>/dev/null)
+    echo "${BOLD}Capabilities:${RESET}"
+    local browser_status="$browser_setting"
+    if [[ "$browser_setting" == "auto" ]]; then
+      if command -v agent-browser &>/dev/null; then
+        browser_status="auto ${GREEN}(available)${RESET}"
+      else
+        browser_status="auto ${DIM}(not installed)${RESET}"
+      fi
+    fi
+    echo "  Browser: $browser_status"
+    echo ""
   else
     # Fallback: just show the file
     cat "$CONFIG_FILE"
@@ -1464,6 +1498,15 @@ $never_touch
 
 "
     fi
+  fi
+
+  # Add browser instructions if available
+  local browser_instructions
+  browser_instructions=$(get_browser_instructions)
+  if [[ -n "$browser_instructions" ]]; then
+    prompt+="$browser_instructions
+
+"
   fi
 
   # Add context based on PRD source
@@ -2819,6 +2862,11 @@ show_summary() {
 
 main() {
   parse_args "$@"
+
+  # Load browser setting from config (if not overridden by CLI flag)
+  if [[ "$BROWSER_ENABLED" == "auto" ]] && [[ -f "$CONFIG_FILE" ]]; then
+    BROWSER_ENABLED=$(load_browser_setting)
+  fi
 
   # Handle --init mode
   if [[ "$INIT_MODE" == true ]]; then
