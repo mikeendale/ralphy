@@ -27,6 +27,8 @@ AUTO_COMMIT=true
 # Plan mode (Lisa integration)
 PLAN_MODE=false
 PLAN_FEATURE=""
+PLAN_RESUME=false  # Resume interrupted interview
+PLAN_STATE_FILE="$RALPHY_DIR/plan-state.yaml"  # State file for resume
 FIRST_PRINCIPLES=false  # Enable assumption-challenging phase
 declare -a PLAN_CONTEXT_FILES=()  # Context files for --plan mode
 
@@ -617,6 +619,100 @@ The user has provided the following files to inform this planning session. Revie
   echo "$context_output"
 }
 
+# Save plan interview state for resume capability
+save_plan_state() {
+  local feature_name="$1"
+  local timestamp
+  timestamp=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+  # Ensure .ralphy directory exists
+  mkdir -p "$RALPHY_DIR"
+
+  # Build context files list for YAML
+  local context_files_yaml=""
+  if [[ ${#PLAN_CONTEXT_FILES[@]} -gt 0 ]]; then
+    context_files_yaml="context_files:"
+    for file in "${PLAN_CONTEXT_FILES[@]}"; do
+      context_files_yaml+="
+  - \"$file\""
+    done
+  else
+    context_files_yaml="context_files: []"
+  fi
+
+  # Write state file
+  cat > "$PLAN_STATE_FILE" << EOF
+# Ralphy Plan Interview State
+# This file allows resuming an interrupted planning interview
+
+feature: "$feature_name"
+feature_slug: "$(slugify "$feature_name")"
+timestamp: "$timestamp"
+first_principles: $FIRST_PRINCIPLES
+$context_files_yaml
+
+# Interview progress tracking
+status: "in_progress"
+EOF
+
+  log_info "Interview state saved to $PLAN_STATE_FILE"
+}
+
+# Load plan interview state for resume
+load_plan_state() {
+  if [[ ! -f "$PLAN_STATE_FILE" ]]; then
+    log_error "No saved interview state found at $PLAN_STATE_FILE"
+    log_info "Start a new interview with: ./ralphy.sh --plan \"feature name\""
+    return 1
+  fi
+
+  if ! command -v yq &>/dev/null; then
+    log_error "yq is required to resume interviews. Install from https://github.com/mikefarah/yq"
+    return 1
+  fi
+
+  # Load state values
+  PLAN_FEATURE=$(yq -r '.feature // ""' "$PLAN_STATE_FILE" 2>/dev/null)
+  FIRST_PRINCIPLES=$(yq -r '.first_principles // false' "$PLAN_STATE_FILE" 2>/dev/null)
+
+  # Load context files
+  local context_count
+  context_count=$(yq -r '.context_files | length' "$PLAN_STATE_FILE" 2>/dev/null)
+  if [[ "$context_count" -gt 0 ]]; then
+    while IFS= read -r file; do
+      if [[ -n "$file" ]] && [[ -f "$file" ]]; then
+        PLAN_CONTEXT_FILES+=("$file")
+      elif [[ -n "$file" ]]; then
+        log_warn "Context file no longer exists: $file"
+      fi
+    done < <(yq -r '.context_files[]' "$PLAN_STATE_FILE" 2>/dev/null)
+  fi
+
+  # Get timestamp for display
+  local saved_timestamp
+  saved_timestamp=$(yq -r '.timestamp // ""' "$PLAN_STATE_FILE" 2>/dev/null)
+
+  if [[ -z "$PLAN_FEATURE" ]]; then
+    log_error "Invalid state file: missing feature name"
+    return 1
+  fi
+
+  log_info "Resuming interview for: $PLAN_FEATURE"
+  log_info "Originally started: $saved_timestamp"
+  [[ "$FIRST_PRINCIPLES" == "true" ]] && log_info "Mode: First Principles"
+  [[ ${#PLAN_CONTEXT_FILES[@]} -gt 0 ]] && log_info "Context files: ${#PLAN_CONTEXT_FILES[@]}"
+
+  return 0
+}
+
+# Delete plan state file after successful completion
+delete_plan_state() {
+  if [[ -f "$PLAN_STATE_FILE" ]]; then
+    rm -f "$PLAN_STATE_FILE"
+    log_debug "Removed interview state file"
+  fi
+}
+
 # Build the interview prompt for plan mode
 build_plan_interview_prompt() {
   local feature_name="$1"
@@ -799,14 +895,34 @@ INTERVIEW_PROMPT_CONT
 # Run the plan mode interview
 run_plan_interview() {
   local feature_name="$1"
+  local is_resume="${2:-false}"
   local feature_slug
   feature_slug=$(slugify "$feature_name")
 
-  log_info "Starting planning interview for: $feature_name"
+  if [[ "$is_resume" == "true" ]]; then
+    log_info "Resuming planning interview for: $feature_name"
+  else
+    log_info "Starting planning interview for: $feature_name"
+    # Save state for potential resume
+    save_plan_state "$feature_name"
+  fi
 
   # Build the interview prompt
   local prompt
   prompt=$(build_plan_interview_prompt "$feature_name")
+
+  # Add resume context if resuming
+  if [[ "$is_resume" == "true" ]]; then
+    prompt+="
+
+## IMPORTANT: This is a RESUMED interview
+
+The user is resuming a previously interrupted planning interview.
+- Acknowledge that you're continuing from where you left off
+- Ask if they'd like to pick up where they were or start a specific section
+- Be ready to adapt based on what progress was made before the interruption
+"
+  fi
 
   # Create docs/specs directory if needed
   mkdir -p docs/specs
@@ -862,6 +978,9 @@ run_plan_interview() {
 
     # Prompt for execution handoff
     if [[ -f "tasks.yaml" ]]; then
+      # Delete state file on successful completion
+      delete_plan_state
+
       echo ""
       echo "${BOLD}============================================${RESET}"
       echo "Planning complete!"
@@ -882,6 +1001,7 @@ run_plan_interview() {
     fi
   else
     log_error "Interview session ended with an error"
+    log_info "Resume later with: ./ralphy.sh --plan --resume"
     return $exit_code
   fi
 
@@ -904,6 +1024,8 @@ ${BOLD}USAGE:${RESET}
 ${BOLD}PLANNING MODE:${RESET}
   --plan "feature"    Launch interactive interview to generate PRD
                       Creates tasks.yaml and docs/specs/<feature>.md
+  --resume            Resume an interrupted planning interview
+                      Loads state from .ralphy/plan-state.yaml
   --context FILE      Provide context file(s) to inform the interview
                       Supports .md, .txt, .yaml, .json (can use multiple times)
   --first-principles  Start interview with assumption-challenging questions
@@ -965,6 +1087,7 @@ ${BOLD}EXAMPLES:${RESET}
   ./ralphy.sh --plan "api v2" --context docs/api-spec.md  # Plan with context
   ./ralphy.sh --plan "migration" --context old.yaml --context new.yaml
   ./ralphy.sh --plan "new feature" --first-principles  # Challenge assumptions first
+  ./ralphy.sh --resume                     # Resume interrupted interview
 
   # Brownfield mode (single tasks in existing projects)
   ./ralphy.sh --init                       # Initialize config
@@ -1163,6 +1286,11 @@ parse_args() {
         ;;
       --first-principles)
         FIRST_PRINCIPLES=true
+        shift
+        ;;
+      --resume)
+        PLAN_RESUME=true
+        PLAN_MODE=true  # --resume implies --plan mode
         shift
         ;;
       --no-commit)
@@ -3143,6 +3271,18 @@ main() {
 
   # Handle --plan mode (Lisa integration)
   if [[ "$PLAN_MODE" == true ]]; then
+    # Handle resume mode
+    if [[ "$PLAN_RESUME" == true ]]; then
+      if ! load_plan_state; then
+        exit 1
+      fi
+    elif [[ -z "$PLAN_FEATURE" ]]; then
+      log_error "--plan requires a feature name argument"
+      echo "Usage: ./ralphy.sh --plan \"feature name\""
+      echo "   or: ./ralphy.sh --plan --resume  (to resume interrupted interview)"
+      exit 1
+    fi
+
     # Check basic requirements (AI engine)
     case "$AI_ENGINE" in
       claude) command -v claude &>/dev/null || { log_error "Claude Code CLI not found"; exit 1; } ;;
@@ -3155,7 +3295,11 @@ main() {
 
     # Show plan mode banner
     echo "${BOLD}============================================${RESET}"
-    echo "${BOLD}Ralphy${RESET} - Planning Mode (Lisa)"
+    if [[ "$PLAN_RESUME" == true ]]; then
+      echo "${BOLD}Ralphy${RESET} - Planning Mode (Lisa) - ${YELLOW}RESUMING${RESET}"
+    else
+      echo "${BOLD}Ralphy${RESET} - Planning Mode (Lisa)"
+    fi
     local engine_display
     case "$AI_ENGINE" in
       opencode) engine_display="${CYAN}OpenCode${RESET}" ;;
@@ -3170,7 +3314,7 @@ main() {
     echo "${BOLD}============================================${RESET}"
     echo ""
 
-    run_plan_interview "$PLAN_FEATURE"
+    run_plan_interview "$PLAN_FEATURE" "$PLAN_RESUME"
     exit $?
   fi
 
