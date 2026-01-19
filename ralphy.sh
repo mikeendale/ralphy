@@ -27,6 +27,7 @@ AUTO_COMMIT=true
 # Plan mode (Lisa integration)
 PLAN_MODE=false
 PLAN_FEATURE=""
+FIRST_PRINCIPLES=false  # Enable assumption-challenging phase
 declare -a PLAN_CONTEXT_FILES=()  # Context files for --plan mode
 
 # Runtime options
@@ -638,6 +639,27 @@ You are Lisa, an AI planning assistant. Your job is to conduct a thorough interv
 
 Start by acknowledging the feature name and asking your first question. Ask one question at a time and wait for the user's response before continuing.
 
+INTERVIEW_PROMPT
+
+  # Add first-principles phase if enabled
+  if [[ "$FIRST_PRINCIPLES" == true ]]; then
+    cat << 'FIRST_PRINCIPLES_SECTION'
+### Phase 0: First Principles (Assumption Challenging)
+**IMPORTANT: Start with this phase before Phase 1.**
+
+Before diving into requirements, challenge the fundamental assumptions. Ask 3-5 probing questions such as:
+- "Why does this feature need to exist at all?"
+- "What if we did nothing - what would happen?"
+- "Are we solving the right problem, or a symptom of a deeper issue?"
+- "What assumptions are we making that might be wrong?"
+- "Is there a radically simpler approach we're overlooking?"
+
+The goal is to ensure we're building the right thing before we figure out how to build it right. After this phase, continue to Phase 1.
+
+FIRST_PRINCIPLES_SECTION
+  fi
+
+  cat << 'INTERVIEW_PROMPT_CONT'
 ### Phase 1: Scope Definition
 - What problem does this feature solve?
 - Who are the primary users?
@@ -752,7 +774,7 @@ This signals to Ralphy that the planning interview is finished.
 - Be concise but thorough
 - Reference existing codebase patterns when you discover them
 
-INTERVIEW_PROMPT
+INTERVIEW_PROMPT_CONT
 
   # Add context files if provided
   local context
@@ -767,6 +789,9 @@ INTERVIEW_PROMPT
   echo "## Feature Being Planned"
   echo "Feature Name: $feature_name"
   echo "Feature Slug: $feature_slug"
+  if [[ "$FIRST_PRINCIPLES" == true ]]; then
+    echo "Mode: First Principles (start with assumption-challenging questions)"
+  fi
   echo ""
   echo "Begin the interview now. Greet the user and ask your first question about the feature."
 }
@@ -881,6 +906,8 @@ ${BOLD}PLANNING MODE:${RESET}
                       Creates tasks.yaml and docs/specs/<feature>.md
   --context FILE      Provide context file(s) to inform the interview
                       Supports .md, .txt, .yaml, .json (can use multiple times)
+  --first-principles  Start interview with assumption-challenging questions
+                      Asks "why" before "how" to ensure right problem is solved
 
 ${BOLD}CONFIG & SETUP:${RESET}
   --init              Initialize .ralphy/ with smart defaults
@@ -937,6 +964,7 @@ ${BOLD}EXAMPLES:${RESET}
   ./ralphy.sh --plan "dark mode" --opencode # Plan with OpenCode
   ./ralphy.sh --plan "api v2" --context docs/api-spec.md  # Plan with context
   ./ralphy.sh --plan "migration" --context old.yaml --context new.yaml
+  ./ralphy.sh --plan "new feature" --first-principles  # Challenge assumptions first
 
   # Brownfield mode (single tasks in existing projects)
   ./ralphy.sh --init                       # Initialize config
@@ -1132,6 +1160,10 @@ parse_args() {
             ;;
         esac
         shift 2
+        ;;
+      --first-principles)
+        FIRST_PRINCIPLES=true
+        shift
         ;;
       --no-commit)
         AUTO_COMMIT=false
