@@ -576,6 +576,107 @@ run_brownfield_task() {
 # ============================================
 
 # Load and format context files for the interview prompt
+# Load config rules and boundaries for plan mode
+load_plan_config() {
+  local config_output=""
+
+  [[ ! -f "$CONFIG_FILE" ]] && return
+
+  if ! command -v yq &>/dev/null; then
+    return
+  fi
+
+  # Load project info
+  local name lang framework desc
+  name=$(yq -r '.project.name // ""' "$CONFIG_FILE" 2>/dev/null)
+  lang=$(yq -r '.project.language // ""' "$CONFIG_FILE" 2>/dev/null)
+  framework=$(yq -r '.project.framework // ""' "$CONFIG_FILE" 2>/dev/null)
+  desc=$(yq -r '.project.description // ""' "$CONFIG_FILE" 2>/dev/null)
+
+  # Load rules
+  local rules
+  rules=$(yq -r '.rules // [] | .[]' "$CONFIG_FILE" 2>/dev/null)
+
+  # Load boundaries
+  local never_touch always_test
+  never_touch=$(yq -r '.boundaries.never_touch // [] | .[]' "$CONFIG_FILE" 2>/dev/null)
+  always_test=$(yq -r '.boundaries.always_test // [] | .[]' "$CONFIG_FILE" 2>/dev/null)
+
+  # Only output if there's something to include
+  if [[ -z "$name" && -z "$rules" && -z "$never_touch" && -z "$always_test" ]]; then
+    return
+  fi
+
+  config_output+="## Project Configuration (.ralphy/config.yaml)
+
+The project has a configuration file with rules and constraints you MUST respect.
+
+"
+
+  # Project info
+  if [[ -n "$name" || -n "$lang" || -n "$framework" ]]; then
+    config_output+="### Project Info
+"
+    [[ -n "$name" ]] && config_output+="- **Name:** $name
+"
+    [[ -n "$lang" ]] && config_output+="- **Language:** $lang
+"
+    [[ -n "$framework" ]] && config_output+="- **Framework:** $framework
+"
+    [[ -n "$desc" ]] && config_output+="- **Description:** $desc
+"
+    config_output+="
+"
+  fi
+
+  # Rules - MUST be followed
+  if [[ -n "$rules" ]]; then
+    config_output+="### Rules (MUST FOLLOW)
+These are project-wide rules that all generated specs must respect:
+"
+    while IFS= read -r rule; do
+      [[ -n "$rule" ]] && config_output+="- $rule
+"
+    done <<< "$rules"
+    config_output+="
+**IMPORTANT:** When generating the spec, include these rules in the Technical Notes section.
+
+"
+  fi
+
+  # Boundaries - files that should not be modified
+  if [[ -n "$never_touch" ]]; then
+    config_output+="### Boundaries: Never Touch
+These files/directories must NOT be modified by any generated tasks:
+"
+    while IFS= read -r path; do
+      [[ -n "$path" ]] && config_output+="- \`$path\`
+"
+    done <<< "$never_touch"
+    config_output+="
+**IMPORTANT:** Do NOT suggest tasks that modify these files. If a feature requires changes to these files, note it as a constraint or out-of-scope item.
+
+"
+  fi
+
+  # Always test boundaries
+  if [[ -n "$always_test" ]]; then
+    config_output+="### Boundaries: Always Test
+These areas require tests whenever modified:
+"
+    while IFS= read -r path; do
+      [[ -n "$path" ]] && config_output+="- \`$path\`
+"
+    done <<< "$always_test"
+    config_output+="
+**IMPORTANT:** If tasks touch these areas, include testing requirements in acceptance criteria.
+
+"
+  fi
+
+  echo "$config_output"
+}
+
 load_plan_context() {
   local context_output=""
 
@@ -899,6 +1000,14 @@ This signals to Ralphy that the planning interview is finished.
 
 INTERVIEW_PROMPT_CONT
 
+  # Add config rules and boundaries
+  local config_context
+  config_context=$(load_plan_config)
+  if [[ -n "$config_context" ]]; then
+    echo ""
+    echo "$config_context"
+  fi
+
   # Add context files if provided
   local context
   context=$(load_plan_context)
@@ -1052,6 +1161,7 @@ ${BOLD}PLANNING MODE:${RESET}
   --plan "feature"    Launch interactive interview to generate PRD
                       Creates tasks.yaml and docs/specs/<feature>.md
                       AI automatically explores codebase before asking questions
+                      Respects rules and boundaries from .ralphy/config.yaml
   --resume            Resume an interrupted planning interview
                       Loads state from .ralphy/plan-state.yaml
   --context FILE      Provide context file(s) to inform the interview
