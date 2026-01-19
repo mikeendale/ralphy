@@ -24,6 +24,10 @@ SHOW_CONFIG=false
 ADD_RULE=""
 AUTO_COMMIT=true
 
+# Plan mode (Lisa integration)
+PLAN_MODE=false
+PLAN_FEATURE=""
+
 # Runtime options
 SKIP_TESTS=false
 SKIP_LINT=false
@@ -564,6 +568,249 @@ run_brownfield_task() {
 }
 
 # ============================================
+# PLAN MODE (LISA INTEGRATION)
+# ============================================
+
+# Build the interview prompt for plan mode
+build_plan_interview_prompt() {
+  local feature_name="$1"
+  local feature_slug
+  feature_slug=$(slugify "$feature_name")
+
+  cat << 'INTERVIEW_PROMPT'
+You are Lisa, an AI planning assistant. Your job is to conduct a thorough interview to understand the user's feature requirements and generate a complete specification.
+
+## Your Goals
+1. Understand the full scope of the feature
+2. Identify user stories with clear acceptance criteria
+3. Discuss technical implementation details
+4. Consider UX implications
+5. Identify trade-offs and concerns
+6. Plan implementation phases
+7. Determine verification approach
+
+## Interview Process
+
+Start by acknowledging the feature name and asking your first question. Ask one question at a time and wait for the user's response before continuing.
+
+### Phase 1: Scope Definition
+- What problem does this feature solve?
+- Who are the primary users?
+- What is the minimum viable version?
+- What is explicitly out of scope?
+
+### Phase 2: User Stories
+- Walk through each user interaction
+- Define acceptance criteria for each story
+- Identify edge cases
+
+### Phase 3: Technical Details
+- What are the key technical decisions?
+- Are there existing patterns to follow?
+- What dependencies are involved?
+- Any performance considerations?
+
+### Phase 4: UX Considerations
+- What is the ideal user flow?
+- Error states and edge cases?
+- Accessibility requirements?
+
+### Phase 5: Trade-offs & Concerns
+- What are the risks?
+- What are you uncertain about?
+- What would you do differently with more time?
+
+### Phase 6: Implementation Phases
+- How should work be broken down?
+- What can be done in parallel?
+- What are the dependencies between tasks?
+
+### Phase 7: Verification
+- How will you know it works?
+- What should be tested?
+- How will you demo this?
+
+## Output Format
+
+When the interview is complete (user says "done", "that's all", "finished", etc.), generate TWO files:
+
+### File 1: tasks.yaml
+Write to: ./tasks.yaml
+
+```yaml
+feature: "Feature Name"
+created: "YYYY-MM-DD"
+phases:
+  - name: "Phase Name"
+    tasks:
+      - title: "Task title"
+        description: "What needs to be done"
+        acceptance_criteria:
+          - "Criterion 1"
+          - "Criterion 2"
+        parallel_group: 1
+```
+
+Rules for tasks.yaml:
+- Each task has title, description, acceptance_criteria (list), and parallel_group
+- Tasks with the same parallel_group can run concurrently
+- Dependent tasks must have higher parallel_group numbers
+- Acceptance criteria should be behavioral and testable
+- No implementation details in acceptance criteria
+
+### File 2: Markdown Spec
+Write to: ./docs/specs/FEATURE_SLUG.md
+
+```markdown
+# Feature Name
+
+## Overview
+Brief description of the feature and its purpose.
+
+## User Stories
+### US-1: Story Title
+**As a** [user type], **I want** [goal], **so that** [benefit].
+
+**Acceptance Criteria:**
+- [ ] Criterion 1
+- [ ] Criterion 2
+
+## Technical Notes
+Key technical decisions and constraints.
+
+## Out of Scope
+What is explicitly not included.
+
+## Implementation Phases
+
+### Phase 1: Phase Name
+- Task 1
+- Task 2
+
+### Phase 2: Phase Name
+- Task 3
+```
+
+## Completion Signal
+
+After writing both files, output exactly:
+```
+===PLAN_COMPLETE===
+```
+
+This signals to Ralphy that the planning interview is finished.
+
+## Important Notes
+- Ask clarifying questions when requirements are vague
+- Suggest industry best practices when relevant
+- Push back on scope creep politely
+- Be concise but thorough
+- Reference existing codebase patterns when you discover them
+
+INTERVIEW_PROMPT
+
+  # Add feature-specific context
+  echo ""
+  echo "## Feature Being Planned"
+  echo "Feature Name: $feature_name"
+  echo "Feature Slug: $feature_slug"
+  echo ""
+  echo "Begin the interview now. Greet the user and ask your first question about the feature."
+}
+
+# Run the plan mode interview
+run_plan_interview() {
+  local feature_name="$1"
+  local feature_slug
+  feature_slug=$(slugify "$feature_name")
+
+  log_info "Starting planning interview for: $feature_name"
+
+  # Build the interview prompt
+  local prompt
+  prompt=$(build_plan_interview_prompt "$feature_name")
+
+  # Create docs/specs directory if needed
+  mkdir -p docs/specs
+
+  # Launch AI in interactive mode (NO --dangerously-skip-permissions)
+  case "$AI_ENGINE" in
+    claude)
+      log_info "Launching Claude Code in interactive mode..."
+      echo "$prompt" | claude --print
+      ;;
+    opencode)
+      log_info "Launching OpenCode in interactive mode..."
+      echo "$prompt" | opencode
+      ;;
+    cursor)
+      log_info "Launching Cursor in interactive mode..."
+      echo "$prompt" | agent
+      ;;
+    codex)
+      log_info "Launching Codex in interactive mode..."
+      echo "$prompt" | codex
+      ;;
+    qwen)
+      log_info "Launching Qwen-Code in interactive mode..."
+      echo "$prompt" | qwen
+      ;;
+    droid)
+      log_info "Launching Factory Droid in interactive mode..."
+      echo "$prompt" | droid
+      ;;
+    *)
+      log_error "Unknown AI engine: $AI_ENGINE"
+      return 1
+      ;;
+  esac
+
+  local exit_code=$?
+
+  if [[ $exit_code -eq 0 ]]; then
+    # Check if files were generated
+    if [[ -f "tasks.yaml" ]]; then
+      log_success "Generated: tasks.yaml"
+    else
+      log_warn "tasks.yaml was not generated"
+    fi
+
+    local spec_file="docs/specs/${feature_slug}.md"
+    if [[ -f "$spec_file" ]]; then
+      log_success "Generated: $spec_file"
+    else
+      log_warn "Spec file was not generated at $spec_file"
+    fi
+
+    # Prompt for execution handoff
+    if [[ -f "tasks.yaml" ]]; then
+      echo ""
+      echo "${BOLD}============================================${RESET}"
+      echo "Planning complete!"
+      [[ -f "tasks.yaml" ]] && echo "  ${GREEN}✓${RESET} tasks.yaml"
+      [[ -f "$spec_file" ]] && echo "  ${GREEN}✓${RESET} $spec_file"
+      echo "${BOLD}============================================${RESET}"
+      echo ""
+      read -r -p "Execute these tasks now? [y/N] " response
+      case "$response" in
+        [yY]|[yY][eE][sS])
+          log_info "Launching task execution..."
+          exec "$0" --yaml tasks.yaml
+          ;;
+        *)
+          log_info "Exiting. Run './ralphy.sh --yaml tasks.yaml' to execute later."
+          ;;
+      esac
+    fi
+  else
+    log_error "Interview session ended with an error"
+    return $exit_code
+  fi
+
+  return 0
+}
+
+# ============================================
 # HELP & VERSION
 # ============================================
 
@@ -575,6 +822,10 @@ ${BOLD}USAGE:${RESET}
   ./ralphy.sh [options]              # PRD mode (requires PRD.md)
   ./ralphy.sh "task description"     # Single task mode (brownfield)
   ./ralphy.sh --init                 # Initialize .ralphy/ config
+
+${BOLD}PLANNING MODE:${RESET}
+  --plan "feature"    Launch interactive interview to generate PRD
+                      Creates tasks.yaml and docs/specs/<feature>.md
 
 ${BOLD}CONFIG & SETUP:${RESET}
   --init              Initialize .ralphy/ with smart defaults
@@ -626,6 +877,10 @@ ${BOLD}OTHER OPTIONS:${RESET}
   --version           Show version number
 
 ${BOLD}EXAMPLES:${RESET}
+  # Plan mode (generate PRD from interview)
+  ./ralphy.sh --plan "user authentication" # Launch planning interview
+  ./ralphy.sh --plan "dark mode" --opencode # Plan with OpenCode
+
   # Brownfield mode (single tasks in existing projects)
   ./ralphy.sh --init                       # Initialize config
   ./ralphy.sh "add dark mode toggle"       # Run single task
@@ -786,6 +1041,17 @@ parse_args() {
         [[ -z "${2:-}" ]] && { log_error "--add-rule requires an argument"; exit 1; }
         ADD_RULE="$2"
         shift 2
+        ;;
+      --plan)
+        PLAN_MODE=true
+        if [[ -n "${2:-}" ]] && [[ ! "$2" =~ ^- ]]; then
+          PLAN_FEATURE="$2"
+          shift 2
+        else
+          log_error "--plan requires a feature name argument"
+          echo "Usage: ./ralphy.sh --plan \"feature name\""
+          exit 1
+        fi
         ;;
       --no-commit)
         AUTO_COMMIT=false
@@ -2761,6 +3027,39 @@ main() {
   if [[ -n "$ADD_RULE" ]]; then
     add_ralphy_rule "$ADD_RULE"
     exit 0
+  fi
+
+  # Handle --plan mode (Lisa integration)
+  if [[ "$PLAN_MODE" == true ]]; then
+    # Check basic requirements (AI engine)
+    case "$AI_ENGINE" in
+      claude) command -v claude &>/dev/null || { log_error "Claude Code CLI not found"; exit 1; } ;;
+      opencode) command -v opencode &>/dev/null || { log_error "OpenCode CLI not found"; exit 1; } ;;
+      cursor) command -v agent &>/dev/null || { log_error "Cursor agent CLI not found"; exit 1; } ;;
+      codex) command -v codex &>/dev/null || { log_error "Codex CLI not found"; exit 1; } ;;
+      qwen) command -v qwen &>/dev/null || { log_error "Qwen-Code CLI not found"; exit 1; } ;;
+      droid) command -v droid &>/dev/null || { log_error "Factory Droid CLI not found"; exit 1; } ;;
+    esac
+
+    # Show plan mode banner
+    echo "${BOLD}============================================${RESET}"
+    echo "${BOLD}Ralphy${RESET} - Planning Mode (Lisa)"
+    local engine_display
+    case "$AI_ENGINE" in
+      opencode) engine_display="${CYAN}OpenCode${RESET}" ;;
+      cursor) engine_display="${YELLOW}Cursor Agent${RESET}" ;;
+      codex) engine_display="${BLUE}Codex${RESET}" ;;
+      qwen) engine_display="${GREEN}Qwen-Code${RESET}" ;;
+      droid) engine_display="${MAGENTA}Factory Droid${RESET}" ;;
+      *) engine_display="${MAGENTA}Claude Code${RESET}" ;;
+    esac
+    echo "Engine: $engine_display"
+    echo "Feature: ${CYAN}$PLAN_FEATURE${RESET}"
+    echo "${BOLD}============================================${RESET}"
+    echo ""
+
+    run_plan_interview "$PLAN_FEATURE"
+    exit $?
   fi
 
   # Handle single-task (brownfield) mode
