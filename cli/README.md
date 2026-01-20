@@ -141,6 +141,10 @@ ralphy --branch-per-task --draft-pr     # + draft PRs
 - AI CLI: [Claude Code](https://github.com/anthropics/claude-code), [OpenCode](https://opencode.ai/docs/), [Cursor](https://cursor.com), Codex, Qwen-Code, or [Factory Droid](https://docs.factory.ai/cli/getting-started/quickstart)
 - `gh` (optional, for GitHub issues / `--create-pr`)
 
+## Plan Mode
+
+Plan mode (interactive specification interviews) is currently available in the [bash script version](https://github.com/michaelshimeles/ralphy#plan-mode-bash-script-only) only. npm CLI support coming soon.
+
 ## Links
 
 - [GitHub](https://github.com/michaelshimeles/ralphy)

@@ -26,7 +26,7 @@ cd ralphy && chmod +x ralphy.sh
 ./ralphy.sh --prd PRD.md
 ```
 
-Both versions have identical features. Examples below use `ralphy` (npm) - substitute `./ralphy.sh` if using the bash script.
+Both versions share core features. Plan mode (`--plan`) is currently bash script only. Examples below use `ralphy` (npm) - substitute `./ralphy.sh` if using the bash script.
 
 ## Two Modes
 
@@ -40,6 +40,36 @@ ralphy "fix the auth bug"
 ```bash
 ralphy              # uses PRD.md
 ralphy --prd tasks.md
+```
+
+## Plan Mode *(bash script only)*
+
+Interactive specification interview that generates a PRD before implementation:
+
+```bash
+./ralphy.sh --plan "user authentication"    # start interview
+./ralphy.sh --resume                         # resume interrupted session
+./ralphy.sh --plan "feature" --plan-context file1.ts file2.ts  # with context files
+```
+
+Creates:
+- `tasks.yaml` - task breakdown for implementation
+- `.ralphy/specs/<feature>.md` - full specification
+
+After planning completes, run implementation:
+```bash
+./ralphy.sh --yaml tasks.yaml
+```
+
+Configure planning behavior in `.ralphy/config.yaml`:
+```yaml
+plan:
+  rules:
+    - "prefer small, incremental PRs"
+  boundaries:
+    - "do not modify auth system"
+  context:
+    - "src/types/**"
 ```
 
 ## Project Config
@@ -183,6 +213,9 @@ Branch naming: `ralphy/<task-slug>`
 | `--init` | setup .ralphy/ config |
 | `--config` | show config |
 | `--add-rule "rule"` | add rule to config |
+| `--plan "feature"` | start planning interview *(bash only)* |
+| `--resume` | resume interrupted planning *(bash only)* |
+| `--plan-context FILE...` | add context files to planning *(bash only)* |
 
 ## Requirements
 
@@ -214,6 +247,12 @@ Branch naming: `ralphy/<task-slug>`
 ---
 
 ## Changelog
+
+### v4.2.0
+- Plan mode: `--plan` for interactive specification interviews (bash script only)
+- Generates PRD and task breakdown before implementation
+- Resume interrupted sessions with `--resume`
+- Add context files with `--plan-context`
 
 ### v4.1.0
 - TypeScript CLI: `npm install -g ralphy-cli`
