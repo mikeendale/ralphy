@@ -1008,12 +1008,30 @@ What is explicitly not included.
 
 ## Completion Signal
 
-After writing both files, output exactly:
-```
-===PLAN_COMPLETE===
-```
+After writing both files:
 
-This signals to Ralphy that the planning interview is finished.
+1. Output exactly:
+\`\`\`
+===PLAN_COMPLETE===
+\`\`\`
+
+2. Then display clear next-steps instructions to the user (replace FEATURE_SLUG with the actual feature slug you used for the spec file):
+\`\`\`
+───────────────────────────────────────────────────
+✅ Planning complete!
+
+Your planning documents have been generated:
+  • tasks.yaml - Task breakdown for implementation
+  • .ralphy/specs/FEATURE_SLUG.md - Full specification
+
+📋 NEXT STEPS:
+  1. Exit this Claude session (press Ctrl+C or type /exit)
+  2. Ralphy will prompt you to start implementation
+  3. Or run later: ./ralphy.sh --yaml tasks.yaml
+───────────────────────────────────────────────────
+\`\`\`
+
+This signals to Ralphy that the planning interview is finished and tells the user what to do next.
 
 ## Important Notes
 - **ALWAYS explore the codebase first** before asking your first question
@@ -1197,7 +1215,7 @@ ${BOLD}USAGE:${RESET}
 
 ${BOLD}PLANNING MODE:${RESET}
   --plan "feature"    Launch interactive interview to generate PRD
-                      Creates tasks.yaml and docs/specs/<feature>.md
+                      Creates tasks.yaml and .ralphy/specs/<feature>.md
                       AI automatically explores codebase before asking questions
                       Respects rules and boundaries from .ralphy/config.yaml
   --resume            Resume an interrupted planning interview
