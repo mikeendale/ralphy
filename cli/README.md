@@ -110,6 +110,21 @@ ralphy --branch-per-task --create-pr    # + create PRs
 ralphy --branch-per-task --draft-pr     # + draft PRs
 ```
 
+## Browser Automation
+
+Ralphy supports browser automation via [agent-browser](https://agent-browser.dev) for testing web UIs.
+
+```bash
+ralphy "add login form" --browser    # enable browser automation
+ralphy "fix checkout" --no-browser   # disable browser automation
+```
+
+When enabled (and agent-browser is installed), the AI can:
+- Open URLs and navigate pages
+- Click elements and fill forms
+- Take screenshots for verification
+- Test web UI changes after implementation
+
 ## Options
 
 | Flag | What it does |
@@ -121,14 +136,18 @@ ralphy --branch-per-task --draft-pr     # + draft PRs
 | `--parallel` | run parallel |
 | `--max-parallel N` | max agents (default: 3) |
 | `--branch-per-task` | branch per task |
+| `--base-branch BRANCH` | base branch for PRs |
 | `--create-pr` | create PRs |
 | `--draft-pr` | draft PRs |
 | `--no-tests` | skip tests |
 | `--no-lint` | skip lint |
 | `--fast` | skip tests + lint |
 | `--no-commit` | don't auto-commit |
+| `--browser` | enable browser automation |
+| `--no-browser` | disable browser automation |
 | `--max-iterations N` | stop after N tasks |
 | `--max-retries N` | retries per task (default: 3) |
+| `--retry-delay N` | delay between retries in seconds (default: 5) |
 | `--dry-run` | preview only |
 | `-v, --verbose` | debug output |
 | `--init` | setup .ralphy/ config |

@@ -36,6 +36,7 @@ declare -a PLAN_CONTEXT_FILES=()  # Context files for --plan mode
 SKIP_TESTS=false
 SKIP_LINT=false
 AI_ENGINE="claude"  # claude, opencode, cursor, codex, qwen, or droid
+MODEL_OVERRIDE=""   # Override default model for any engine (e.g., "sonnet", "gpt-4o-mini")
 DRY_RUN=false
 MAX_ITERATIONS=0  # 0 = unlimited
 MAX_RETRIES=3
@@ -633,11 +634,13 @@ run_brownfield_task() {
   case "$AI_ENGINE" in
     claude)
       claude --dangerously-skip-permissions \
+        ${MODEL_OVERRIDE:+--model "$MODEL_OVERRIDE"} \
         -p "$prompt" 2>&1 | tee "$output_file"
       ;;
     opencode)
       opencode --output-format stream-json \
         --approval-mode full-auto \
+        ${MODEL_OVERRIDE:+--model "$MODEL_OVERRIDE"} \
         "$prompt" 2>&1 | tee "$output_file"
       ;;
     cursor)
@@ -1340,12 +1343,16 @@ ${BOLD}SINGLE TASK MODE:${RESET}
   --no-commit         Don't auto-commit after task completion
 
 ${BOLD}AI ENGINE OPTIONS:${RESET}
-  --claude            Use Claude Code (default)
+  --claude            Use Claude Code (default, uses Opus)
   --opencode          Use OpenCode
   --cursor            Use Cursor agent
   --codex             Use Codex CLI
   --qwen              Use Qwen-Code
   --droid             Use Factory Droid
+  --model <name>      Override default model for any engine
+                      Claude: sonnet, haiku, opus
+                      OpenCode: gpt-4o, gpt-4o-mini, o1, o3-mini
+  --sonnet            Shortcut for --claude --model sonnet
 
 ${BOLD}WORKFLOW OPTIONS:${RESET}
   --no-tests          Skip writing and running tests
@@ -1454,6 +1461,11 @@ parse_args() {
         AI_ENGINE="claude"
         shift
         ;;
+      --sonnet)
+        AI_ENGINE="claude"
+        MODEL_OVERRIDE="sonnet"
+        shift
+        ;;
       --cursor|--agent)
         AI_ENGINE="cursor"
         shift
@@ -1469,6 +1481,10 @@ parse_args() {
       --droid)
         AI_ENGINE="droid"
         shift
+        ;;
+      --model)
+        MODEL_OVERRIDE="$2"
+        shift 2
         ;;
       --dry-run)
         DRY_RUN=true
@@ -1713,6 +1729,21 @@ check_requirements() {
       fi
       ;;
   esac
+
+  # Check for root user - Claude Code and some other AI engines don't support auto mode as root
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    case "$AI_ENGINE" in
+      claude|cursor)
+        log_error "Running as root is not supported with $AI_ENGINE."
+        log_info "The --dangerously-skip-permissions flag cannot be used as root for security reasons."
+        log_info "Please run Ralphy as a non-root user, or use a different AI engine (--opencode, --codex, --qwen, --droid)."
+        exit 1
+        ;;
+      *)
+        log_warn "Running as root user. Some AI engines may have limited functionality."
+        ;;
+    esac
+  fi
 
   # Check for jq (required for JSON parsing)
   if ! command -v jq &>/dev/null; then
@@ -2376,12 +2407,13 @@ run_ai_command() {
     *)
       # Claude Code: use existing approach
       claude --dangerously-skip-permissions \
+        ${MODEL_OVERRIDE:+--model "$MODEL_OVERRIDE"} \
         --verbose \
         --output-format stream-json \
         -p "$prompt" > "$output_file" 2>&1 &
       ;;
   esac
-  
+
   ai_pid=$!
 }
 
@@ -2921,6 +2953,7 @@ Focus only on implementing: $task_name"
         (
           cd "$worktree_dir"
           claude --dangerously-skip-permissions \
+            ${MODEL_OVERRIDE:+--model "$MODEL_OVERRIDE"} \
             --verbose \
             -p "$prompt" \
             --output-format stream-json
@@ -3502,6 +3535,7 @@ Be careful to preserve functionality from BOTH branches. The goal is to integrat
               ;;
             *)
               claude --dangerously-skip-permissions \
+                ${MODEL_OVERRIDE:+--model "$MODEL_OVERRIDE"} \
                 -p "$resolve_prompt" \
                 --output-format stream-json > "$resolve_tmpfile" 2>&1
               ;;
