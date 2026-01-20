@@ -44,7 +44,7 @@ ralphy --prd tasks.md
 
 ## Plan Mode *(bash script only)*
 
-Interactive specification interview that generates a PRD before implementation:
+Interactive specification interview that generates a PRD before implementation. Based on [Lisa](https://github.com/blencorp/lisa), a Claude Code plugin for structured planning interviews.
 
 ```bash
 ./ralphy.sh --plan "user authentication"    # start interview
