@@ -49,7 +49,7 @@ Interactive specification interview that generates a PRD before implementation. 
 ```bash
 ./ralphy.sh --plan "user authentication"    # start interview
 ./ralphy.sh --resume                         # resume interrupted session
-./ralphy.sh --plan "feature" --plan-context file1.ts file2.ts  # with context files
+./ralphy.sh --plan "feature" --context file1.ts file2.ts  # with context files
 ```
 
 Creates:
@@ -245,7 +245,8 @@ capabilities:
 | `--add-rule "rule"` | add rule to config |
 | `--plan "feature"` | start planning interview *(bash only)* |
 | `--resume` | resume interrupted planning *(bash only)* |
-| `--plan-context FILE...` | add context files to planning *(bash only)* |
+| `--context FILE...` | add context files to planning *(bash only)* |
+| `--first-principles` | challenge assumptions before planning *(bash only)* |
 
 ## Requirements
 
@@ -283,7 +284,7 @@ capabilities:
 - Plan mode: `--plan` for interactive specification interviews (bash script only)
 - Generates PRD and task breakdown before implementation
 - Resume interrupted sessions with `--resume`
-- Add context files with `--plan-context`
+- Add context files with `--context`
 
 ### v4.2.0
 - browser automation: `--browser` / `--no-browser` with [agent-browser](https://agent-browser.dev)
