@@ -104,8 +104,8 @@ export function parseArgs(args: string[]): {
 	}
 
 	// Handle --fast
-	const skipTests = opts.fast || opts.skipTests || !opts.tests;
-	const skipLint = opts.fast || opts.skipLint || !opts.lint;
+	const skipTests = opts.fast || opts.skipTests;
+	const skipLint = opts.fast || opts.skipLint;
 
 	const options: RuntimeOptions = {
 		skipTests,
