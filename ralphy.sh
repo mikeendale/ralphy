@@ -901,7 +901,7 @@ check_requirements() {
     case "$AI_ENGINE" in
       claude|cursor)
         log_error "Running as root is not supported with $AI_ENGINE."
-        log_info "Claude Code's --dangerously-skip-permissions flag cannot be used as root for security reasons."
+        log_info "The --dangerously-skip-permissions flag cannot be used as root for security reasons."
         log_info "Please run Ralphy as a non-root user, or use a different AI engine (--opencode, --codex, --qwen, --droid)."
         exit 1
         ;;
