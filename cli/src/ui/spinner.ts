@@ -11,9 +11,11 @@ export class ProgressSpinner {
 	private startTime: number;
 	private currentStep = "Thinking";
 	private task: string;
+	private settings: string;
 
-	constructor(task: string) {
+	constructor(task: string, settings?: string[]) {
 		this.task = task.length > 40 ? `${task.slice(0, 37)}...` : task;
+		this.settings = settings?.length ? `[${settings.join(", ")}]` : "";
 		this.startTime = Date.now();
 		this.spinner = createSpinner(this.formatText()).start();
 	}
@@ -25,7 +27,8 @@ export class ProgressSpinner {
 		const remainingSecs = secs % 60;
 		const time = mins > 0 ? `${mins}m ${remainingSecs}s` : `${secs}s`;
 
-		return `${pc.cyan(this.currentStep)} ${pc.dim(`[${time}]`)} ${this.task}`;
+		const settingsStr = this.settings ? ` ${pc.yellow(this.settings)}` : "";
+		return `${pc.cyan(this.currentStep)}${settingsStr} ${pc.dim(`[${time}]`)} ${this.task}`;
 	}
 
 	/**

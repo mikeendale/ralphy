@@ -12,6 +12,11 @@ export interface AIResult {
 }
 
 /**
+ * Progress callback type for streaming execution
+ */
+export type ProgressCallback = (step: string) => void;
+
+/**
  * AI Engine interface - one per AI tool
  */
 export interface AIEngine {
@@ -23,6 +28,12 @@ export interface AIEngine {
 	isAvailable(): Promise<boolean>;
 	/** Execute a prompt and return the result */
 	execute(prompt: string, workDir: string): Promise<AIResult>;
+	/** Execute with streaming progress updates (optional) */
+	executeStreaming?(
+		prompt: string,
+		workDir: string,
+		onProgress: ProgressCallback
+	): Promise<AIResult>;
 }
 
 /**

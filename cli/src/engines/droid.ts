@@ -1,5 +1,11 @@
-import { BaseAIEngine, checkForErrors, execCommand } from "./base.ts";
-import type { AIResult } from "./types.ts";
+import {
+	BaseAIEngine,
+	checkForErrors,
+	execCommand,
+	execCommandStreaming,
+	detectStepFromOutput,
+} from "./base.ts";
+import type { AIResult, ProgressCallback } from "./types.ts";
 
 /**
  * Factory Droid AI Engine
@@ -63,5 +69,53 @@ export class DroidEngine extends BaseAIEngine {
 		}
 
 		return { response: response || "Task completed", durationMs };
+	}
+
+	async executeStreaming(
+		prompt: string,
+		workDir: string,
+		onProgress: ProgressCallback
+	): Promise<AIResult> {
+		const outputLines: string[] = [];
+
+		const { exitCode } = await execCommandStreaming(
+			this.cliCommand,
+			["exec", "--output-format", "stream-json", "--auto", "medium", prompt],
+			workDir,
+			(line) => {
+				outputLines.push(line);
+
+				// Detect and report step changes
+				const step = detectStepFromOutput(line);
+				if (step) {
+					onProgress(step);
+				}
+			}
+		);
+
+		const output = outputLines.join("\n");
+
+		// Check for errors
+		const error = checkForErrors(output);
+		if (error) {
+			return {
+				success: false,
+				response: "",
+				inputTokens: 0,
+				outputTokens: 0,
+				error,
+			};
+		}
+
+		// Parse Droid output
+		const { response, durationMs } = this.parseOutput(output);
+
+		return {
+			success: exitCode === 0,
+			response,
+			inputTokens: 0,
+			outputTokens: 0,
+			cost: durationMs > 0 ? `duration:${durationMs}` : undefined,
+		};
 	}
 }

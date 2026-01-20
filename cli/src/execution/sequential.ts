@@ -24,6 +24,9 @@ export interface ExecutionOptions {
 	createPr: boolean;
 	draftPr: boolean;
 	autoCommit: boolean;
+	browserEnabled: "auto" | "true" | "false";
+	/** Active settings to display in spinner */
+	activeSettings?: string[];
 }
 
 export interface ExecutionResult {
@@ -52,6 +55,8 @@ export async function runSequential(options: ExecutionOptions): Promise<Executio
 		createPr,
 		draftPr,
 		autoCommit,
+		browserEnabled,
+		activeSettings,
 	} = options;
 
 	const result: ExecutionResult = {
@@ -97,12 +102,13 @@ export async function runSequential(options: ExecutionOptions): Promise<Executio
 			task: task.body || task.title,
 			autoCommit,
 			workDir,
+			browserEnabled,
 			skipTests,
 			skipLint,
 		});
 
 		// Execute with spinner
-		const spinner = new ProgressSpinner(task.title);
+		const spinner = new ProgressSpinner(task.title, activeSettings);
 		let aiResult: AIResult | null = null;
 
 		if (dryRun) {
@@ -112,6 +118,14 @@ export async function runSequential(options: ExecutionOptions): Promise<Executio
 				aiResult = await withRetry(
 					async () => {
 						spinner.updateStep("Working");
+
+						// Use streaming if available
+						if (engine.executeStreaming) {
+							return await engine.executeStreaming(prompt, workDir, (step) => {
+								spinner.updateStep(step);
+							});
+						}
+
 						const res = await engine.execute(prompt, workDir);
 
 						if (!res.success && res.error && isRetryableError(res.error)) {

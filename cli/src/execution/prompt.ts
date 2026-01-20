@@ -1,9 +1,11 @@
 import { loadBoundaries, loadProjectContext, loadRules } from "../config/loader.ts";
+import { getBrowserInstructions, isBrowserAvailable } from "./browser.ts";
 
 interface PromptOptions {
 	task: string;
 	autoCommit?: boolean;
 	workDir?: string;
+	browserEnabled?: "auto" | "true" | "false";
 	skipTests?: boolean;
 	skipLint?: boolean;
 }
@@ -12,7 +14,7 @@ interface PromptOptions {
  * Build the full prompt with project context, rules, boundaries, and task
  */
 export function buildPrompt(options: PromptOptions): string {
-	const { task, autoCommit = true, workDir = process.cwd(), skipTests = false, skipLint = false } = options;
+	const { task, autoCommit = true, workDir = process.cwd(), browserEnabled = "auto", skipTests = false, skipLint = false } = options;
 
 	const parts: string[] = [];
 
@@ -32,6 +34,11 @@ export function buildPrompt(options: PromptOptions): string {
 	const boundaries = loadBoundaries(workDir);
 	if (boundaries.length > 0) {
 		parts.push(`## Boundaries\nDo NOT modify these files/directories:\n${boundaries.join("\n")}`);
+	}
+
+	// Add browser instructions if available
+	if (isBrowserAvailable(browserEnabled)) {
+		parts.push(getBrowserInstructions());
 	}
 
 	// Add the task
@@ -73,13 +80,16 @@ interface ParallelPromptOptions {
 	progressFile: string;
 	skipTests?: boolean;
 	skipLint?: boolean;
+	browserEnabled?: "auto" | "true" | "false";
 }
 
 /**
  * Build a prompt for parallel agent execution
  */
 export function buildParallelPrompt(options: ParallelPromptOptions): string {
-	const { task, progressFile, skipTests = false, skipLint = false } = options;
+	const { task, progressFile, skipTests = false, skipLint = false, browserEnabled = "auto" } = options;
+
+	const browserSection = isBrowserAvailable(browserEnabled) ? `\n\n${getBrowserInstructions()}` : "";
 
 	const instructions = ["1. Implement this specific task completely"];
 
@@ -102,7 +112,7 @@ export function buildParallelPrompt(options: ParallelPromptOptions): string {
 
 	return `You are working on a specific task. Focus ONLY on this task:
 
-TASK: ${task}
+TASK: ${task}${browserSection}
 
 Instructions:
 ${instructions.join("\n")}

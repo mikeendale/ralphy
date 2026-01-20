@@ -41,6 +41,8 @@ export function createProgram(): Command {
 		.option("--github <repo>", "GitHub repo for issues (owner/repo)")
 		.option("--github-label <label>", "Filter GitHub issues by label")
 		.option("--no-commit", "Don't auto-commit changes")
+		.option("--browser", "Enable browser automation (agent-browser)")
+		.option("--no-browser", "Disable browser automation")
 		.option("-v, --verbose", "Verbose output");
 
 	return program;
@@ -105,6 +107,7 @@ export function parseArgs(args: string[]): {
 		githubRepo: opts.github || "",
 		githubLabel: opts.githubLabel || "",
 		autoCommit: opts.commit !== false,
+		browserEnabled: opts.browser === true ? "true" : opts.browser === false ? "false" : "auto",
 	};
 
 	return {

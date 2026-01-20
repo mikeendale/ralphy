@@ -4,9 +4,11 @@ import { createEngine, isEngineAvailable } from "../../engines/index.ts";
 import { createTaskSource } from "../../tasks/index.ts";
 import { runSequential } from "../../execution/sequential.ts";
 import { runParallel } from "../../execution/parallel.ts";
+import { isBrowserAvailable } from "../../execution/browser.ts";
 import { getDefaultBaseBranch } from "../../git/branch.ts";
 import { logError, logInfo, logSuccess, setVerbose, formatDuration, formatTokens } from "../../ui/logger.ts";
 import { notifyAllComplete } from "../../ui/notify.ts";
+import { buildActiveSettings } from "../../ui/settings.ts";
 import type { RuntimeOptions } from "../../config/types.ts";
 
 /**
@@ -70,7 +72,13 @@ export async function runLoop(options: RuntimeOptions): Promise<void> {
 	} else {
 		logInfo("Mode: Sequential");
 	}
+	if (isBrowserAvailable(options.browserEnabled)) {
+		logInfo("Browser automation enabled (agent-browser)");
+	}
 	console.log("");
+
+	// Build active settings for display
+	const activeSettings = buildActiveSettings(options);
 
 	// Run tasks
 	let result;
@@ -90,9 +98,11 @@ export async function runLoop(options: RuntimeOptions): Promise<void> {
 			createPr: options.createPr,
 			draftPr: options.draftPr,
 			autoCommit: options.autoCommit,
+			browserEnabled: options.browserEnabled,
 			maxParallel: options.maxParallel,
 			prdSource: options.prdSource,
 			prdFile: options.prdFile,
+			activeSettings,
 		});
 	} else {
 		result = await runSequential({
@@ -110,6 +120,8 @@ export async function runLoop(options: RuntimeOptions): Promise<void> {
 			createPr: options.createPr,
 			draftPr: options.draftPr,
 			autoCommit: options.autoCommit,
+			browserEnabled: options.browserEnabled,
+			activeSettings,
 		});
 	}
 

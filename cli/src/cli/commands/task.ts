@@ -1,12 +1,13 @@
-import { existsSync } from "node:fs";
 import type { AIEngineName } from "../../engines/types.ts";
 import { createEngine, isEngineAvailable } from "../../engines/index.ts";
 import { buildPrompt } from "../../execution/prompt.ts";
+import { isBrowserAvailable } from "../../execution/browser.ts";
 import { isRetryableError, withRetry } from "../../execution/retry.ts";
 import { logTaskProgress } from "../../config/writer.ts";
-import { logError, logInfo, logSuccess, setVerbose, formatTokens } from "../../ui/logger.ts";
+import { logError, logInfo, setVerbose, formatTokens } from "../../ui/logger.ts";
 import { ProgressSpinner } from "../../ui/spinner.ts";
 import { notifyTaskComplete, notifyTaskFailed } from "../../ui/notify.ts";
+import { buildActiveSettings } from "../../ui/settings.ts";
 import type { RuntimeOptions } from "../../config/types.ts";
 
 /**
@@ -29,17 +30,26 @@ export async function runTask(task: string, options: RuntimeOptions): Promise<vo
 
 	logInfo(`Running task with ${engine.name}...`);
 
+	// Check browser availability
+	if (isBrowserAvailable(options.browserEnabled)) {
+		logInfo("Browser automation enabled (agent-browser)");
+	}
+
 	// Build prompt
 	const prompt = buildPrompt({
 		task,
 		autoCommit: options.autoCommit,
 		workDir,
+		browserEnabled: options.browserEnabled,
 		skipTests: options.skipTests,
 		skipLint: options.skipLint,
 	});
 
+	// Build active settings for display
+	const activeSettings = buildActiveSettings(options);
+
 	// Execute with spinner
-	const spinner = new ProgressSpinner(task);
+	const spinner = new ProgressSpinner(task, activeSettings);
 
 	if (options.dryRun) {
 		spinner.success("(dry run) Would execute task");
@@ -52,6 +62,14 @@ export async function runTask(task: string, options: RuntimeOptions): Promise<vo
 		const result = await withRetry(
 			async () => {
 				spinner.updateStep("Working");
+
+				// Use streaming if available
+				if (engine.executeStreaming) {
+					return await engine.executeStreaming(prompt, workDir, (step) => {
+						spinner.updateStep(step);
+					});
+				}
+
 				const res = await engine.execute(prompt, workDir);
 
 				if (!res.success && res.error && isRetryableError(res.error)) {

@@ -83,6 +83,8 @@ export interface RuntimeOptions {
 	githubLabel: string;
 	/** Auto-commit changes */
 	autoCommit: boolean;
+	/** Browser automation mode: 'auto' | 'true' | 'false' */
+	browserEnabled: "auto" | "true" | "false";
 }
 
 /**
@@ -108,4 +110,5 @@ export const DEFAULT_OPTIONS: RuntimeOptions = {
 	githubRepo: "",
 	githubLabel: "",
 	autoCommit: true,
+	browserEnabled: "auto",
 };
