@@ -142,6 +142,18 @@ tasks:
     completed: false
 ```
 
+Or organize by phases (auto-detected):
+```yaml
+phases:
+  - name: "Phase 1: Setup"
+    tasks:
+      - title: create auth
+      - title: add dashboard
+  - name: "Phase 2: Features"
+    tasks:
+      - title: build API
+```
+
 **GitHub Issues**:
 ```bash
 ralphy --github owner/repo
@@ -175,6 +187,8 @@ tasks:
   - title: Add relationships
     parallel_group: 2  # runs after group 1
 ```
+
+Works with phased YAML too - groups span across phases.
 
 ## Branch Workflow
 
