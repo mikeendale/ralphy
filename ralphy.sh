@@ -126,6 +126,11 @@ slugify() {
   echo "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g' | sed -E 's/^-|-$//g' | cut -c1-50
 }
 
+# Escape a string for safe inclusion in YAML double-quoted values
+yaml_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' '
+}
+
 # Check if agent-browser is available
 is_browser_available() {
   if [[ "$BROWSER_ENABLED" == "false" ]]; then
@@ -846,7 +851,7 @@ save_plan_state() {
 # Ralphy Plan Interview State
 # This file allows resuming an interrupted planning interview
 
-feature: "$feature_name"
+feature: "$(yaml_escape "$feature_name")"
 feature_slug: "$(slugify "$feature_name")"
 timestamp: "$timestamp"
 first_principles: $FIRST_PRINCIPLES
@@ -1212,7 +1217,7 @@ The user is resuming a previously interrupted planning interview.
   mkdir -p .claude/commands
   cat > .claude/commands/_plan.md << EOF
 ---
-description: Planning interview for $feature_name
+description: Planning interview for $(yaml_escape "$feature_name")
 allowed-tools: AskUserQuestion, Read, Write, Glob, Grep, Bash
 ---
 
