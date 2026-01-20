@@ -1850,35 +1850,72 @@ mark_task_complete_markdown() {
 # TASK SOURCES - YAML
 # ============================================
 
+# Detect YAML structure type: "phased" or "flat"
+get_yaml_structure() {
+  if yq -e 'has("phases")' "$PRD_FILE" >/dev/null 2>&1; then
+    echo "phased"
+  else
+    echo "flat"
+  fi
+}
+
 get_tasks_yaml() {
-  yq -r '.tasks[] | select(.completed != true) | .title' "$PRD_FILE" 2>/dev/null || true
+  if [[ "$(get_yaml_structure)" == "phased" ]]; then
+    yq -r '.phases[].tasks[] | select(.completed != true) | .title' "$PRD_FILE" 2>/dev/null || true
+  else
+    yq -r '.tasks[] | select(.completed != true) | .title' "$PRD_FILE" 2>/dev/null || true
+  fi
 }
 
 get_next_task_yaml() {
-  yq -r '.tasks[] | select(.completed != true) | .title' "$PRD_FILE" 2>/dev/null | head -1 | cut -c1-50 || echo ""
+  if [[ "$(get_yaml_structure)" == "phased" ]]; then
+    yq -r '.phases[].tasks[] | select(.completed != true) | .title' "$PRD_FILE" 2>/dev/null | head -1 | cut -c1-50 || echo ""
+  else
+    yq -r '.tasks[] | select(.completed != true) | .title' "$PRD_FILE" 2>/dev/null | head -1 | cut -c1-50 || echo ""
+  fi
 }
 
 count_remaining_yaml() {
-  yq -r '[.tasks[] | select(.completed != true)] | length' "$PRD_FILE" 2>/dev/null || echo "0"
+  if [[ "$(get_yaml_structure)" == "phased" ]]; then
+    yq -r '[.phases[].tasks[] | select(.completed != true)] | length' "$PRD_FILE" 2>/dev/null || echo "0"
+  else
+    yq -r '[.tasks[] | select(.completed != true)] | length' "$PRD_FILE" 2>/dev/null || echo "0"
+  fi
 }
 
 count_completed_yaml() {
-  yq -r '[.tasks[] | select(.completed == true)] | length' "$PRD_FILE" 2>/dev/null || echo "0"
+  if [[ "$(get_yaml_structure)" == "phased" ]]; then
+    yq -r '[.phases[].tasks[] | select(.completed == true)] | length' "$PRD_FILE" 2>/dev/null || echo "0"
+  else
+    yq -r '[.tasks[] | select(.completed == true)] | length' "$PRD_FILE" 2>/dev/null || echo "0"
+  fi
 }
 
 mark_task_complete_yaml() {
   local task=$1
-  yq -i "(.tasks[] | select(.title == \"$task\")).completed = true" "$PRD_FILE"
+  if [[ "$(get_yaml_structure)" == "phased" ]]; then
+    yq -i "(.phases[].tasks[] | select(.title == \"$task\")).completed = true" "$PRD_FILE"
+  else
+    yq -i "(.tasks[] | select(.title == \"$task\")).completed = true" "$PRD_FILE"
+  fi
 }
 
 get_parallel_group_yaml() {
   local task=$1
-  yq -r ".tasks[] | select(.title == \"$task\") | .parallel_group // 0" "$PRD_FILE" 2>/dev/null || echo "0"
+  if [[ "$(get_yaml_structure)" == "phased" ]]; then
+    yq -r ".phases[].tasks[] | select(.title == \"$task\") | .parallel_group // 0" "$PRD_FILE" 2>/dev/null || echo "0"
+  else
+    yq -r ".tasks[] | select(.title == \"$task\") | .parallel_group // 0" "$PRD_FILE" 2>/dev/null || echo "0"
+  fi
 }
 
 get_tasks_in_group_yaml() {
   local group=$1
-  yq -r ".tasks[] | select(.completed != true and (.parallel_group // 0) == $group) | .title" "$PRD_FILE" 2>/dev/null || true
+  if [[ "$(get_yaml_structure)" == "phased" ]]; then
+    yq -r ".phases[].tasks[] | select(.completed != true and (.parallel_group // 0) == $group) | .title" "$PRD_FILE" 2>/dev/null || true
+  else
+    yq -r ".tasks[] | select(.completed != true and (.parallel_group // 0) == $group) | .title" "$PRD_FILE" 2>/dev/null || true
+  fi
 }
 
 # ============================================
@@ -3010,9 +3047,11 @@ run_parallel_tasks() {
 
   if [[ "$PRD_SOURCE" == "yaml" ]]; then
     groups=()
+    local task_path=".tasks[]"
+    [[ "$(get_yaml_structure)" == "phased" ]] && task_path=".phases[].tasks[]"
     while IFS= read -r group; do
       [[ -n "$group" ]] && groups+=("$group")
-    done < <(yq -r '.tasks[] | select(.completed != true) | (.parallel_group // 0)' "$PRD_FILE" 2>/dev/null | sort -n | uniq)
+    done < <(yq -r "${task_path} | select(.completed != true) | (.parallel_group // 0)" "$PRD_FILE" 2>/dev/null | sort -n | uniq)
   fi
 
   for group in "${groups[@]}"; do
