@@ -85,6 +85,7 @@ ralphy --cursor     # Cursor
 ralphy --codex      # Codex
 ralphy --qwen       # Qwen-Code
 ralphy --droid      # Factory Droid
+ralphy --copilot    # GitHub Copilot
 ```
 
 ### Model Override
@@ -245,7 +246,7 @@ capabilities:
 ## Requirements
 
 **Required:**
-- AI CLI: [Claude Code](https://github.com/anthropics/claude-code), [OpenCode](https://opencode.ai/docs/), [Cursor](https://cursor.com), Codex, Qwen-Code, or [Factory Droid](https://docs.factory.ai/cli/getting-started/quickstart)
+- AI CLI: [Claude Code](https://github.com/anthropics/claude-code), [OpenCode](https://opencode.ai/docs/), [Cursor](https://cursor.com), Codex, Qwen-Code, [Factory Droid](https://docs.factory.ai/cli/getting-started/quickstart), or [GitHub Copilot](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/use-copilot-cli)
 
 **npm version (`ralphy-cli`):**
 - Node.js 18+ or Bun
@@ -269,6 +270,7 @@ capabilities:
 | Cursor | `agent` | `--force` | duration |
 | Qwen | `qwen` | `--approval-mode yolo` | tokens |
 | Droid | `droid exec` | `--auto medium` | duration |
+| Copilot | `copilot` | `-p` flag | duration |
 
 ---
 
