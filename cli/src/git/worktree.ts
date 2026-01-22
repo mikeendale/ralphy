@@ -1,7 +1,18 @@
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import simpleGit, { type SimpleGit } from "simple-git";
+import { logDebug } from "../ui/logger.ts";
 import { slugify } from "./branch.ts";
+
+/**
+ * Generate a unique identifier for branch names
+ * Combines timestamp with random suffix to prevent collisions
+ */
+function generateUniqueId(): string {
+	const timestamp = Date.now();
+	const random = Math.random().toString(36).substring(2, 8);
+	return `${timestamp}-${random}`;
+}
 
 /**
  * Create a worktree for parallel agent execution
@@ -11,33 +22,27 @@ export async function createAgentWorktree(
 	agentNum: number,
 	baseBranch: string,
 	worktreeBase: string,
-	originalDir: string
+	originalDir: string,
 ): Promise<{ worktreeDir: string; branchName: string }> {
-	const branchName = `ralphy/agent-${agentNum}-${slugify(taskName)}`;
-	const worktreeDir = join(worktreeBase, `agent-${agentNum}`);
+	const uniqueId = generateUniqueId();
+	const branchName = `ralphy/agent-${agentNum}-${uniqueId}-${slugify(taskName)}`;
+	const worktreeDir = join(worktreeBase, `agent-${agentNum}-${uniqueId}`);
 
 	const git: SimpleGit = simpleGit(originalDir);
 
-	// Prune stale worktrees
+	// Prune stale worktrees first
 	await git.raw(["worktree", "prune"]);
 
-	// Delete branch if it exists
-	try {
-		await git.deleteLocalBranch(branchName, true);
-	} catch {
-		// Branch might not exist
-	}
-
-	// Create branch from base
-	await git.branch([branchName, baseBranch]);
-
-	// Remove existing worktree dir if any
+	// Remove existing worktree dir if any (from previous failed runs)
 	if (existsSync(worktreeDir)) {
 		rmSync(worktreeDir, { recursive: true, force: true });
+		// Prune again after removing directory
+		await git.raw(["worktree", "prune"]);
 	}
 
-	// Create worktree
-	await git.raw(["worktree", "add", worktreeDir, branchName]);
+	// Use atomic -B flag to create/reset branch in one operation
+	// This eliminates the race condition between delete and create
+	await git.raw(["worktree", "add", "-B", branchName, worktreeDir, baseBranch]);
 
 	return { worktreeDir, branchName };
 }
@@ -47,8 +52,8 @@ export async function createAgentWorktree(
  */
 export async function cleanupAgentWorktree(
 	worktreeDir: string,
-	branchName: string,
-	originalDir: string
+	_branchName: string,
+	originalDir: string,
 ): Promise<{ leftInPlace: boolean }> {
 	// Check for uncommitted changes
 	if (existsSync(worktreeDir)) {
@@ -65,8 +70,9 @@ export async function cleanupAgentWorktree(
 	const git: SimpleGit = simpleGit(originalDir);
 	try {
 		await git.raw(["worktree", "remove", "-f", worktreeDir]);
-	} catch {
-		// Ignore removal errors
+	} catch (error) {
+		const errorMsg = error instanceof Error ? error.message : String(error);
+		logDebug(`Failed to remove worktree ${worktreeDir}: ${errorMsg}`);
 	}
 
 	// Don't delete branch - it may have commits we want to keep/PR
@@ -113,8 +119,9 @@ export async function cleanupAllWorktrees(workDir: string): Promise<void> {
 	for (const worktree of worktrees) {
 		try {
 			await git.raw(["worktree", "remove", "-f", worktree]);
-		} catch {
-			// Ignore errors
+		} catch (error) {
+			const errorMsg = error instanceof Error ? error.message : String(error);
+			logDebug(`Failed to remove worktree ${worktree}: ${errorMsg}`);
 		}
 	}
 

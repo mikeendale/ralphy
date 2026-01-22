@@ -1,16 +1,20 @@
 #!/usr/bin/env bun
 import { parseArgs } from "./cli/args.ts";
+import { addRule, showConfig } from "./cli/commands/config.ts";
 import { runInit } from "./cli/commands/init.ts";
-import { showConfig, addRule } from "./cli/commands/config.ts";
-import { runTask } from "./cli/commands/task.ts";
 import { runLoop } from "./cli/commands/run.ts";
+import { runTask } from "./cli/commands/task.ts";
 import { logError } from "./ui/logger.ts";
 
 async function main(): Promise<void> {
 	try {
-		const { options, task, initMode, showConfig: showConfigMode, addRule: rule } = parseArgs(
-			process.argv
-		);
+		const {
+			options,
+			task,
+			initMode,
+			showConfig: showConfigMode,
+			addRule: rule,
+		} = parseArgs(process.argv);
 
 		// Handle --init
 		if (initMode) {

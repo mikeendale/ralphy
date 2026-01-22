@@ -6,7 +6,9 @@ import { logWarn } from "../ui/logger.ts";
  */
 export function isAgentBrowserInstalled(): boolean {
 	try {
-		execSync("which agent-browser", { stdio: "ignore" });
+		const isWindows = process.platform === "win32";
+		const checkCommand = isWindows ? "where agent-browser" : "which agent-browser";
+		execSync(checkCommand, { stdio: "ignore" });
 		return true;
 	} catch {
 		return false;

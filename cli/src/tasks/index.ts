@@ -1,12 +1,14 @@
 export * from "./types.ts";
 export * from "./markdown.ts";
+export * from "./markdown-folder.ts";
 export * from "./yaml.ts";
 export * from "./github.ts";
 
-import type { TaskSource, TaskSourceType } from "./types.ts";
-import { MarkdownTaskSource } from "./markdown.ts";
-import { YamlTaskSource } from "./yaml.ts";
 import { GitHubTaskSource } from "./github.ts";
+import { MarkdownFolderTaskSource } from "./markdown-folder.ts";
+import { MarkdownTaskSource } from "./markdown.ts";
+import type { TaskSource, TaskSourceType } from "./types.ts";
+import { YamlTaskSource } from "./yaml.ts";
 
 interface TaskSourceOptions {
 	type: TaskSourceType;
@@ -28,6 +30,12 @@ export function createTaskSource(options: TaskSourceOptions): TaskSource {
 				throw new Error("filePath is required for markdown task source");
 			}
 			return new MarkdownTaskSource(options.filePath);
+
+		case "markdown-folder":
+			if (!options.filePath) {
+				throw new Error("filePath is required for markdown-folder task source");
+			}
+			return new MarkdownFolderTaskSource(options.filePath);
 
 		case "yaml":
 			if (!options.filePath) {

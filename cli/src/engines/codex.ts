@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, rmSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { BaseAIEngine, execCommand } from "./base.ts";
-import type { AIResult } from "./types.ts";
+import type { AIResult, EngineOptions } from "./types.ts";
 
 /**
  * Codex AI Engine
@@ -10,16 +10,18 @@ export class CodexEngine extends BaseAIEngine {
 	name = "Codex";
 	cliCommand = "codex";
 
-	async execute(prompt: string, workDir: string): Promise<AIResult> {
+	async execute(prompt: string, workDir: string, options?: EngineOptions): Promise<AIResult> {
 		// Codex uses a separate file for the last message
 		const lastMessageFile = join(workDir, `.codex-last-message-${Date.now()}-${process.pid}.txt`);
 
 		try {
-			const { stdout, stderr, exitCode } = await execCommand(
-				this.cliCommand,
-				["exec", "--full-auto", "--json", "--output-last-message", lastMessageFile, prompt],
-				workDir
-			);
+			const args = ["exec", "--full-auto", "--json", "--output-last-message", lastMessageFile];
+			if (options?.modelOverride) {
+				args.push("--model", options.modelOverride);
+			}
+			args.push(prompt);
+
+			const { stdout, stderr, exitCode } = await execCommand(this.cliCommand, args, workDir);
 
 			const output = stdout + stderr;
 

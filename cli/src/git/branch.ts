@@ -17,7 +17,7 @@ export function slugify(text: string): string {
 export async function createTaskBranch(
 	task: string,
 	baseBranch: string,
-	workDir = process.cwd()
+	workDir = process.cwd(),
 ): Promise<string> {
 	const git: SimpleGit = simpleGit(workDir);
 	const branchName = `ralphy/${slugify(task)}`;
@@ -58,7 +58,10 @@ export async function createTaskBranch(
 /**
  * Return to the base branch
  */
-export async function returnToBaseBranch(baseBranch: string, workDir = process.cwd()): Promise<void> {
+export async function returnToBaseBranch(
+	baseBranch: string,
+	workDir = process.cwd(),
+): Promise<void> {
 	const git: SimpleGit = simpleGit(workDir);
 	await git.checkout(baseBranch).catch(() => {
 		// Ignore checkout errors

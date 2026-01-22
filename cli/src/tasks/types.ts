@@ -17,7 +17,7 @@ export interface Task {
 /**
  * Task source type
  */
-export type TaskSourceType = "markdown" | "yaml" | "github";
+export type TaskSourceType = "markdown" | "markdown-folder" | "yaml" | "github";
 
 /**
  * Task source interface - one per format

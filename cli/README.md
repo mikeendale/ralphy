@@ -75,12 +75,26 @@ ralphy --qwen       # Qwen-Code
 ralphy --droid      # Factory Droid
 ```
 
+### Model Override
+
+```bash
+ralphy --model sonnet "add feature"    # use sonnet with Claude
+ralphy --sonnet "add feature"          # shortcut for above
+ralphy --opencode --model opencode/glm-4.7-free "task"
+```
+
 ## Task Sources
 
-**Markdown** (default):
+**Markdown file** (default):
 ```bash
 ralphy --prd PRD.md
 ```
+
+**Markdown folder** (for large projects):
+```bash
+ralphy --prd ./prd/
+```
+Reads all `.md` files in the folder and aggregates tasks.
 
 **YAML**:
 ```bash
@@ -100,7 +114,7 @@ ralphy --parallel                  # 3 agents default
 ralphy --parallel --max-parallel 5 # 5 agents
 ```
 
-Each agent gets isolated worktree + branch. Without `--create-pr`: auto-merges back. With `--create-pr`: keeps branches, creates PRs.
+Each agent gets isolated worktree + branch. Without `--create-pr`: auto-merges back with AI conflict resolution. With `--create-pr`: keeps branches, creates PRs. With `--no-merge`: keeps branches without merging.
 
 ## Branch Workflow
 
@@ -129,12 +143,15 @@ When enabled (and agent-browser is installed), the AI can:
 
 | Flag | What it does |
 |------|--------------|
-| `--prd FILE` | task file (default: PRD.md) |
+| `--prd PATH` | task file or folder (auto-detected, default: PRD.md) |
 | `--yaml FILE` | YAML task file |
 | `--github REPO` | use GitHub issues |
 | `--github-label TAG` | filter issues by label |
+| `--model NAME` | override model for any engine |
+| `--sonnet` | shortcut for `--claude --model sonnet` |
 | `--parallel` | run parallel |
 | `--max-parallel N` | max agents (default: 3) |
+| `--no-merge` | skip auto-merge in parallel mode |
 | `--branch-per-task` | branch per task |
 | `--base-branch BRANCH` | base branch for PRs |
 | `--create-pr` | create PRs |

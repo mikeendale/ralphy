@@ -16,10 +16,7 @@ export function sleep(ms: number): Promise<void> {
 /**
  * Execute a function with retry logic
  */
-export async function withRetry<T>(
-	fn: () => Promise<T>,
-	options: RetryOptions
-): Promise<T> {
+export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions): Promise<T> {
 	const { maxRetries, retryDelay, onRetry } = options;
 	let lastError: Error | null = null;
 

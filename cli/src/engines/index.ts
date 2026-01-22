@@ -6,14 +6,16 @@ export * from "./cursor.ts";
 export * from "./codex.ts";
 export * from "./qwen.ts";
 export * from "./droid.ts";
+export * from "./copilot.ts";
 
-import type { AIEngine, AIEngineName } from "./types.ts";
 import { ClaudeEngine } from "./claude.ts";
-import { OpenCodeEngine } from "./opencode.ts";
-import { CursorEngine } from "./cursor.ts";
 import { CodexEngine } from "./codex.ts";
-import { QwenEngine } from "./qwen.ts";
+import { CopilotEngine } from "./copilot.ts";
+import { CursorEngine } from "./cursor.ts";
 import { DroidEngine } from "./droid.ts";
+import { OpenCodeEngine } from "./opencode.ts";
+import { QwenEngine } from "./qwen.ts";
+import type { AIEngine, AIEngineName } from "./types.ts";
 
 /**
  * Create an AI engine by name
@@ -32,6 +34,8 @@ export function createEngine(name: AIEngineName): AIEngine {
 			return new QwenEngine();
 		case "droid":
 			return new DroidEngine();
+		case "copilot":
+			return new CopilotEngine();
 		default:
 			throw new Error(`Unknown AI engine: ${name}`);
 	}

@@ -1,16 +1,47 @@
-import type { AIEngine, AIResult, ProgressCallback } from "./types.ts";
+import { spawn, spawnSync } from "node:child_process";
+import type { AIEngine, AIResult, EngineOptions, ProgressCallback } from "./types.ts";
+
+// Check if running in Bun
+const isBun = typeof Bun !== "undefined";
+const isWindows = process.platform === "win32";
+
+/**
+ * Resolve a command to its full executable path (needed for Windows)
+ */
+function resolveCommand(command: string): string {
+	if (!isWindows) return command;
+	try {
+		const result = spawnSync("where", [command], { encoding: "utf8", stdio: "pipe" });
+		if (result.status !== 0) return command;
+		const paths = result.stdout.trim().split(/\r?\n/);
+		// Prefer .cmd files over .ps1 since Bun cannot spawn .ps1 directly
+		const cmdPath = paths.find((p) => p.toLowerCase().endsWith(".cmd"));
+		if (cmdPath) return cmdPath;
+		// Fall back to first non-.ps1 path, or first path if all are .ps1
+		const nonPs1Path = paths.find((p) => !p.toLowerCase().endsWith(".ps1"));
+		return nonPs1Path || paths[0] || command;
+	} catch {
+		return command;
+	}
+}
 
 /**
  * Check if a command is available in PATH
  */
 export async function commandExists(command: string): Promise<boolean> {
 	try {
-		const proc = Bun.spawn(["which", command], {
-			stdout: "pipe",
-			stderr: "pipe",
-		});
-		const exitCode = await proc.exited;
-		return exitCode === 0;
+		const checkCommand = isWindows ? "where" : "which";
+		if (isBun) {
+			const proc = Bun.spawn([checkCommand, command], {
+				stdout: "pipe",
+				stderr: "pipe",
+			});
+			const exitCode = await proc.exited;
+			return exitCode === 0;
+		}
+		// Node.js fallback - where/which don't need shell
+		const result = spawnSync(checkCommand, [command], { stdio: "pipe" });
+		return result.status === 0;
 	} catch {
 		return false;
 	}
@@ -23,22 +54,54 @@ export async function execCommand(
 	command: string,
 	args: string[],
 	workDir: string,
-	env?: Record<string, string>
+	env?: Record<string, string>,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-	const proc = Bun.spawn([command, ...args], {
-		cwd: workDir,
-		stdout: "pipe",
-		stderr: "pipe",
-		env: { ...process.env, ...env },
+	if (isBun) {
+		const resolvedCommand = resolveCommand(command);
+		const proc = Bun.spawn([resolvedCommand, ...args], {
+			cwd: workDir,
+			stdout: "pipe",
+			stderr: "pipe",
+			env: { ...process.env, ...env },
+		});
+
+		const [stdout, stderr, exitCode] = await Promise.all([
+			new Response(proc.stdout).text(),
+			new Response(proc.stderr).text(),
+			proc.exited,
+		]);
+
+		return { stdout, stderr, exitCode };
+	}
+
+	// Node.js fallback - resolve full path on Windows to avoid shell
+	const resolvedCommand = resolveCommand(command);
+	return new Promise((resolve) => {
+		const proc = spawn(resolvedCommand, args, {
+			cwd: workDir,
+			env: { ...process.env, ...env },
+			stdio: ["ignore", "pipe", "pipe"], // Close stdin, pipe stdout/stderr
+		});
+
+		let stdout = "";
+		let stderr = "";
+
+		proc.stdout?.on("data", (data) => {
+			stdout += data.toString();
+		});
+
+		proc.stderr?.on("data", (data) => {
+			stderr += data.toString();
+		});
+
+		proc.on("close", (exitCode) => {
+			resolve({ stdout, stderr, exitCode: exitCode ?? 1 });
+		});
+
+		proc.on("error", () => {
+			resolve({ stdout, stderr, exitCode: 1 });
+		});
 	});
-
-	const [stdout, stderr, exitCode] = await Promise.all([
-		new Response(proc.stdout).text(),
-		new Response(proc.stderr).text(),
-		proc.exited,
-	]);
-
-	return { stdout, stderr, exitCode };
 }
 
 /**
@@ -95,7 +158,7 @@ export function checkForErrors(output: string): string | null {
  */
 async function readStream(
 	stream: ReadableStream<Uint8Array>,
-	onLine: (line: string) => void
+	onLine: (line: string) => void,
 ): Promise<void> {
 	const reader = stream.getReader();
 	const decoder = new TextDecoder();
@@ -125,23 +188,66 @@ export async function execCommandStreaming(
 	args: string[],
 	workDir: string,
 	onLine: (line: string) => void,
-	env?: Record<string, string>
+	env?: Record<string, string>,
 ): Promise<{ exitCode: number }> {
-	const proc = Bun.spawn([command, ...args], {
-		cwd: workDir,
-		stdout: "pipe",
-		stderr: "pipe",
-		env: { ...process.env, ...env },
+	if (isBun) {
+		const resolvedCommand = resolveCommand(command);
+		const proc = Bun.spawn([resolvedCommand, ...args], {
+			cwd: workDir,
+			stdout: "pipe",
+			stderr: "pipe",
+			env: { ...process.env, ...env },
+		});
+
+		// Process both stdout and stderr in parallel
+		await Promise.all([readStream(proc.stdout, onLine), readStream(proc.stderr, onLine)]);
+
+		const exitCode = await proc.exited;
+		return { exitCode };
+	}
+
+	// Node.js fallback - resolve full path on Windows to avoid shell
+	const resolvedCommand = resolveCommand(command);
+	return new Promise((resolve) => {
+		const proc = spawn(resolvedCommand, args, {
+			cwd: workDir,
+			env: { ...process.env, ...env },
+			stdio: ["ignore", "pipe", "pipe"], // Close stdin, pipe stdout/stderr
+		});
+
+		let stdoutBuffer = "";
+		let stderrBuffer = "";
+
+		const processBuffer = (buffer: string, isStderr = false) => {
+			const lines = buffer.split("\n");
+			const remaining = lines.pop() || "";
+			for (const line of lines) {
+				if (line.trim()) onLine(line);
+			}
+			return remaining;
+		};
+
+		proc.stdout?.on("data", (data) => {
+			stdoutBuffer += data.toString();
+			stdoutBuffer = processBuffer(stdoutBuffer);
+		});
+
+		proc.stderr?.on("data", (data) => {
+			stderrBuffer += data.toString();
+			stderrBuffer = processBuffer(stderrBuffer, true);
+		});
+
+		proc.on("close", (exitCode) => {
+			// Process any remaining data
+			if (stdoutBuffer.trim()) onLine(stdoutBuffer);
+			if (stderrBuffer.trim()) onLine(stderrBuffer);
+			resolve({ exitCode: exitCode ?? 1 });
+		});
+
+		proc.on("error", () => {
+			resolve({ exitCode: 1 });
+		});
 	});
-
-	// Process both stdout and stderr in parallel
-	await Promise.all([
-		readStream(proc.stdout, onLine),
-		readStream(proc.stderr, onLine),
-	]);
-
-	const exitCode = await proc.exited;
-	return { exitCode };
 }
 
 /**
@@ -249,7 +355,7 @@ export abstract class BaseAIEngine implements AIEngine {
 		return commandExists(this.cliCommand);
 	}
 
-	abstract execute(prompt: string, workDir: string): Promise<AIResult>;
+	abstract execute(prompt: string, workDir: string, options?: EngineOptions): Promise<AIResult>;
 
 	/**
 	 * Execute with streaming progress updates (optional implementation)
@@ -257,6 +363,7 @@ export abstract class BaseAIEngine implements AIEngine {
 	executeStreaming?(
 		prompt: string,
 		workDir: string,
-		onProgress: ProgressCallback
+		onProgress: ProgressCallback,
+		options?: EngineOptions,
 	): Promise<AIResult>;
 }

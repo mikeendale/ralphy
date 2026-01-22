@@ -24,7 +24,7 @@ export async function createPullRequest(
 	title: string,
 	body: string,
 	draft = false,
-	workDir = process.cwd()
+	workDir = process.cwd(),
 ): Promise<string | null> {
 	// Push branch first
 	const pushed = await pushBranch(branch, workDir);

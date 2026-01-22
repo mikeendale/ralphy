@@ -1,11 +1,11 @@
 import {
 	BaseAIEngine,
 	checkForErrors,
+	detectStepFromOutput,
 	execCommand,
 	execCommandStreaming,
-	detectStepFromOutput,
 } from "./base.ts";
-import type { AIResult, ProgressCallback } from "./types.ts";
+import type { AIResult, EngineOptions, ProgressCallback } from "./types.ts";
 
 /**
  * Cursor Agent AI Engine
@@ -14,12 +14,14 @@ export class CursorEngine extends BaseAIEngine {
 	name = "Cursor Agent";
 	cliCommand = "agent";
 
-	async execute(prompt: string, workDir: string): Promise<AIResult> {
-		const { stdout, stderr, exitCode } = await execCommand(
-			this.cliCommand,
-			["--print", "--force", "--output-format", "stream-json", prompt],
-			workDir
-		);
+	async execute(prompt: string, workDir: string, options?: EngineOptions): Promise<AIResult> {
+		const args = ["--print", "--force", "--output-format", "stream-json"];
+		if (options?.modelOverride) {
+			args.push("--model", options.modelOverride);
+		}
+		args.push(prompt);
+
+		const { stdout, stderr, exitCode } = await execCommand(this.cliCommand, args, workDir);
 
 		const output = stdout + stderr;
 
@@ -84,24 +86,26 @@ export class CursorEngine extends BaseAIEngine {
 	async executeStreaming(
 		prompt: string,
 		workDir: string,
-		onProgress: ProgressCallback
+		onProgress: ProgressCallback,
+		options?: EngineOptions,
 	): Promise<AIResult> {
+		const args = ["--print", "--force", "--output-format", "stream-json"];
+		if (options?.modelOverride) {
+			args.push("--model", options.modelOverride);
+		}
+		args.push(prompt);
+
 		const outputLines: string[] = [];
 
-		const { exitCode } = await execCommandStreaming(
-			this.cliCommand,
-			["--print", "--force", "--output-format", "stream-json", prompt],
-			workDir,
-			(line) => {
-				outputLines.push(line);
+		const { exitCode } = await execCommandStreaming(this.cliCommand, args, workDir, (line) => {
+			outputLines.push(line);
 
-				// Detect and report step changes
-				const step = detectStepFromOutput(line);
-				if (step) {
-					onProgress(step);
-				}
+			// Detect and report step changes
+			const step = detectStepFromOutput(line);
+			if (step) {
+				onProgress(step);
 			}
-		);
+		});
 
 		const output = outputLines.join("\n");
 

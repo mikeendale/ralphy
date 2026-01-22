@@ -2,9 +2,6 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import YAML from "yaml";
 import { detectProject } from "./detector.ts";
 import {
-	CONFIG_FILE,
-	PROGRESS_FILE,
-	RALPHY_DIR,
 	getConfigPath,
 	getProgressPath,
 	getRalphyDir,
@@ -33,16 +30,19 @@ commands:
 
 # Rules - instructions the AI MUST follow
 # These are injected into every prompt
-rules: []
+rules:
   # Examples:
   # - "Always use TypeScript strict mode"
   # - "Follow the error handling pattern in src/utils/errors.ts"
   # - "All API endpoints must have input validation with Zod"
   # - "Use server actions instead of API routes in Next.js"
+  #
+  # Skills/playbooks (optional):
+  # - "Before coding, read and follow any relevant skill/playbook docs under .opencode/skills or .claude/skills."
 
 # Boundaries - files/folders the AI should not modify
 boundaries:
-  never_touch: []
+  never_touch:
     # Examples:
     # - "src/legacy/**"
     # - "migrations/**"
@@ -53,14 +53,17 @@ boundaries:
 /**
  * Escape a value for safe YAML string
  */
-function escapeYaml(value: string): string {
-	return value.replace(/"/g, '\\"');
+function escapeYaml(value: string | undefined | null): string {
+	return (value || "").replace(/"/g, '\\"');
 }
 
 /**
  * Initialize the .ralphy directory with config files
  */
-export function initConfig(workDir = process.cwd()): { created: boolean; detected: ReturnType<typeof detectProject> } {
+export function initConfig(workDir = process.cwd()): {
+	created: boolean;
+	detected: ReturnType<typeof detectProject>;
+} {
 	const ralphyDir = getRalphyDir(workDir);
 	const configPath = getConfigPath(workDir);
 	const progressPath = getProgressPath(workDir);
@@ -114,7 +117,7 @@ export function addRule(rule: string, workDir = process.cwd()): void {
 export function logTaskProgress(
 	task: string,
 	status: "completed" | "failed",
-	workDir = process.cwd()
+	workDir = process.cwd(),
 ): void {
 	const progressPath = getProgressPath(workDir);
 

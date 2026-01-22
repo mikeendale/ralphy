@@ -12,6 +12,14 @@ export interface AIResult {
 }
 
 /**
+ * Options passed to engine execute methods
+ */
+export interface EngineOptions {
+	/** Override the default model */
+	modelOverride?: string;
+}
+
+/**
  * Progress callback type for streaming execution
  */
 export type ProgressCallback = (step: string) => void;
@@ -27,16 +35,17 @@ export interface AIEngine {
 	/** Check if the engine CLI is available */
 	isAvailable(): Promise<boolean>;
 	/** Execute a prompt and return the result */
-	execute(prompt: string, workDir: string): Promise<AIResult>;
+	execute(prompt: string, workDir: string, options?: EngineOptions): Promise<AIResult>;
 	/** Execute with streaming progress updates (optional) */
 	executeStreaming?(
 		prompt: string,
 		workDir: string,
-		onProgress: ProgressCallback
+		onProgress: ProgressCallback,
+		options?: EngineOptions,
 	): Promise<AIResult>;
 }
 
 /**
  * Supported AI engine names
  */
-export type AIEngineName = "claude" | "opencode" | "cursor" | "codex" | "qwen" | "droid";
+export type AIEngineName = "claude" | "opencode" | "cursor" | "codex" | "qwen" | "droid" | "copilot";

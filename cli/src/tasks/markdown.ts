@@ -43,7 +43,7 @@ export class MarkdownTaskSource implements TaskSource {
 	async markComplete(id: string): Promise<void> {
 		const content = readFileSync(this.filePath, "utf-8");
 		const lines = content.split("\n");
-		const lineNumber = parseInt(id, 10) - 1;
+		const lineNumber = Number.parseInt(id, 10) - 1;
 
 		if (lineNumber >= 0 && lineNumber < lines.length) {
 			// Replace "- [ ]" with "- [x]"

@@ -1,6 +1,6 @@
 import pc from "picocolors";
-import { initConfig } from "../../config/writer.ts";
 import { isInitialized } from "../../config/loader.ts";
+import { initConfig } from "../../config/writer.ts";
 import { logSuccess, logWarn } from "../../ui/logger.ts";
 
 /**
@@ -39,5 +39,7 @@ export async function runInit(workDir = process.cwd()): Promise<void> {
 	console.log(pc.bold("Next steps:"));
 	console.log(`  1. Add rules:  ${pc.cyan('ralphy --add-rule "your rule here"')}`);
 	console.log(`  2. Or edit:    ${pc.cyan(".ralphy/config.yaml")}`);
-	console.log(`  3. Run:        ${pc.cyan('ralphy "your task"')} or ${pc.cyan("ralphy")} (with PRD.md)`);
+	console.log(
+		`  3. Run:        ${pc.cyan('ralphy "your task"')} or ${pc.cyan("ralphy")} (with PRD.md)`,
+	);
 }

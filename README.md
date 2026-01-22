@@ -115,11 +115,23 @@ ralphy --cursor     # Cursor
 ralphy --codex      # Codex
 ralphy --qwen       # Qwen-Code
 ralphy --droid      # Factory Droid
+ralphy --copilot    # GitHub Copilot
+```
+
+### Model Override
+
+Override the default model for any engine:
+
+```bash
+ralphy --model sonnet "add feature"                    # use sonnet with Claude
+ralphy --sonnet "add feature"                          # shortcut for above
+ralphy --opencode --model opencode/glm-4.7-free "task" # custom OpenCode model
+ralphy --qwen --model qwen-max "build api"             # custom Qwen model
 ```
 
 ## Task Sources
 
-**Markdown** (default):
+**Markdown file** (default):
 ```bash
 ralphy --prd PRD.md
 ```
@@ -129,6 +141,19 @@ ralphy --prd PRD.md
 - [ ] add dashboard
 - [x] done task (skipped)
 ```
+
+**Markdown folder** (for large projects):
+```bash
+ralphy --prd ./prd/
+```
+When pointing to a folder, Ralphy reads all `.md` files and aggregates tasks:
+```
+prd/
+  backend.md      # - [ ] create user API
+  frontend.md     # - [ ] add login page
+  infra.md        # - [ ] setup CI/CD
+```
+Tasks are tracked per-file so completion updates the correct file.
 
 **YAML**:
 ```bash
@@ -174,8 +199,9 @@ Agent 2 → /tmp/xxx/agent-2 → ralphy/agent-2-add-dashboard
 Agent 3 → /tmp/xxx/agent-3 → ralphy/agent-3-build-api
 ```
 
-Without `--create-pr`: auto-merges back, AI resolves conflicts.
+Without `--create-pr`: auto-merges back to base branch, AI resolves conflicts.
 With `--create-pr`: keeps branches, creates PRs.
+With `--no-merge`: keeps branches without merging or creating PRs.
 
 **YAML parallel groups** - control execution order:
 ```yaml
@@ -233,12 +259,15 @@ capabilities:
 
 | Flag | What it does |
 |------|--------------|
-| `--prd FILE` | task file (default: PRD.md) |
+| `--prd PATH` | task file or folder (auto-detected, default: PRD.md) |
 | `--yaml FILE` | YAML task file |
 | `--github REPO` | use GitHub issues |
 | `--github-label TAG` | filter issues by label |
+| `--model NAME` | override model for any engine |
+| `--sonnet` | shortcut for `--claude --model sonnet` |
 | `--parallel` | run parallel |
 | `--max-parallel N` | max agents (default: 3) |
+| `--no-merge` | skip auto-merge in parallel mode |
 | `--branch-per-task` | branch per task |
 | `--base-branch NAME` | base branch |
 | `--create-pr` | create PRs |
@@ -265,7 +294,7 @@ capabilities:
 ## Requirements
 
 **Required:**
-- AI CLI: [Claude Code](https://github.com/anthropics/claude-code), [OpenCode](https://opencode.ai/docs/), [Cursor](https://cursor.com), Codex, Qwen-Code, or [Factory Droid](https://docs.factory.ai/cli/getting-started/quickstart)
+- AI CLI: [Claude Code](https://github.com/anthropics/claude-code), [OpenCode](https://opencode.ai/docs/), [Cursor](https://cursor.com), Codex, Qwen-Code, [Factory Droid](https://docs.factory.ai/cli/getting-started/quickstart), or [GitHub Copilot](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/use-copilot-cli)
 
 **npm version (`ralphy-cli`):**
 - Node.js 18+ or Bun
@@ -289,16 +318,28 @@ capabilities:
 | Cursor | `agent` | `--force` | duration |
 | Qwen | `qwen` | `--approval-mode yolo` | tokens |
 | Droid | `droid exec` | `--auto medium` | duration |
+| Copilot | `copilot` | `-p` flag | duration |
 
 ---
 
 ## Changelog
 
-### v4.3.0
+### v4.5.0
 - Plan mode: `--plan` for interactive specification interviews (bash script only)
 - Generates PRD and task breakdown before implementation
 - Resume interrupted sessions with `--resume`
 - Add context files with `--context`
+
+### v4.4.0
+- GitHub Copilot CLI support (`--copilot`)
+
+### v4.3.0
+- model override: `--model <name>` flag to override model for any engine
+- `--sonnet` shortcut for `--claude --model sonnet`
+- `--no-merge` flag to skip auto-merge in parallel mode
+- AI-assisted merge conflict resolution during parallel auto-merge
+- root user detection: error for Claude/Cursor, warning for other engines
+- improved OpenCode error handling and model override support
 
 ### v4.2.0
 - browser automation: `--browser` / `--no-browser` with [agent-browser](https://agent-browser.dev)

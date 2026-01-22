@@ -1,12 +1,12 @@
 import {
 	BaseAIEngine,
 	checkForErrors,
+	detectStepFromOutput,
 	execCommand,
 	execCommandStreaming,
 	parseStreamJsonResult,
-	detectStepFromOutput,
 } from "./base.ts";
-import type { AIResult, ProgressCallback } from "./types.ts";
+import type { AIResult, EngineOptions, ProgressCallback } from "./types.ts";
 
 /**
  * Qwen-Code AI Engine
@@ -15,12 +15,14 @@ export class QwenEngine extends BaseAIEngine {
 	name = "Qwen-Code";
 	cliCommand = "qwen";
 
-	async execute(prompt: string, workDir: string): Promise<AIResult> {
-		const { stdout, stderr, exitCode } = await execCommand(
-			this.cliCommand,
-			["--output-format", "stream-json", "--approval-mode", "yolo", "-p", prompt],
-			workDir
-		);
+	async execute(prompt: string, workDir: string, options?: EngineOptions): Promise<AIResult> {
+		const args = ["--output-format", "stream-json", "--approval-mode", "yolo"];
+		if (options?.modelOverride) {
+			args.push("--model", options.modelOverride);
+		}
+		args.push("-p", prompt);
+
+		const { stdout, stderr, exitCode } = await execCommand(this.cliCommand, args, workDir);
 
 		const output = stdout + stderr;
 
@@ -50,24 +52,26 @@ export class QwenEngine extends BaseAIEngine {
 	async executeStreaming(
 		prompt: string,
 		workDir: string,
-		onProgress: ProgressCallback
+		onProgress: ProgressCallback,
+		options?: EngineOptions,
 	): Promise<AIResult> {
+		const args = ["--output-format", "stream-json", "--approval-mode", "yolo"];
+		if (options?.modelOverride) {
+			args.push("--model", options.modelOverride);
+		}
+		args.push("-p", prompt);
+
 		const outputLines: string[] = [];
 
-		const { exitCode } = await execCommandStreaming(
-			this.cliCommand,
-			["--output-format", "stream-json", "--approval-mode", "yolo", "-p", prompt],
-			workDir,
-			(line) => {
-				outputLines.push(line);
+		const { exitCode } = await execCommandStreaming(this.cliCommand, args, workDir, (line) => {
+			outputLines.push(line);
 
-				// Detect and report step changes
-				const step = detectStepFromOutput(line);
-				if (step) {
-					onProgress(step);
-				}
+			// Detect and report step changes
+			const step = detectStepFromOutput(line);
+			if (step) {
+				onProgress(step);
 			}
-		);
+		});
 
 		const output = outputLines.join("\n");
 

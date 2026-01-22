@@ -1,14 +1,14 @@
-import type { AIEngineName } from "../../engines/types.ts";
-import { createEngine, isEngineAvailable } from "../../engines/index.ts";
-import { buildPrompt } from "../../execution/prompt.ts";
-import { isBrowserAvailable } from "../../execution/browser.ts";
-import { isRetryableError, withRetry } from "../../execution/retry.ts";
+import type { RuntimeOptions } from "../../config/types.ts";
 import { logTaskProgress } from "../../config/writer.ts";
-import { logError, logInfo, setVerbose, formatTokens } from "../../ui/logger.ts";
-import { ProgressSpinner } from "../../ui/spinner.ts";
+import { createEngine, isEngineAvailable } from "../../engines/index.ts";
+import type { AIEngineName } from "../../engines/types.ts";
+import { isBrowserAvailable } from "../../execution/browser.ts";
+import { buildPrompt } from "../../execution/prompt.ts";
+import { isRetryableError, withRetry } from "../../execution/retry.ts";
+import { formatTokens, logError, logInfo, setVerbose } from "../../ui/logger.ts";
 import { notifyTaskComplete, notifyTaskFailed } from "../../ui/notify.ts";
 import { buildActiveSettings } from "../../ui/settings.ts";
-import type { RuntimeOptions } from "../../config/types.ts";
+import { ProgressSpinner } from "../../ui/spinner.ts";
 
 /**
  * Run a single task (brownfield mode)
@@ -84,7 +84,7 @@ export async function runTask(task: string, options: RuntimeOptions): Promise<vo
 				onRetry: (attempt) => {
 					spinner.updateStep(`Retry ${attempt}`);
 				},
-			}
+			},
 		);
 
 		if (result.success) {

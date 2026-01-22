@@ -1,5 +1,5 @@
 import pc from "picocolors";
-import { loadConfig, isInitialized, getConfigPath } from "../../config/loader.ts";
+import { getConfigPath, isInitialized, loadConfig } from "../../config/loader.ts";
 import { addRule as addConfigRule } from "../../config/writer.ts";
 import { logError, logSuccess, logWarn } from "../../ui/logger.ts";
 

@@ -1,11 +1,11 @@
+import { logTaskProgress } from "../config/writer.ts";
 import type { AIEngine, AIResult } from "../engines/types.ts";
-import type { Task, TaskSource } from "../tasks/types.ts";
 import { createTaskBranch, returnToBaseBranch } from "../git/branch.ts";
 import { createPullRequest } from "../git/pr.ts";
-import { logTaskProgress } from "../config/writer.ts";
+import type { Task, TaskSource } from "../tasks/types.ts";
 import { logDebug, logError, logInfo, logSuccess } from "../ui/logger.ts";
-import { ProgressSpinner } from "../ui/spinner.ts";
 import { notifyTaskComplete, notifyTaskFailed } from "../ui/notify.ts";
+import { ProgressSpinner } from "../ui/spinner.ts";
 import { buildPrompt } from "./prompt.ts";
 import { isRetryableError, sleep, withRetry } from "./retry.ts";
 
@@ -27,6 +27,10 @@ export interface ExecutionOptions {
 	browserEnabled: "auto" | "true" | "false";
 	/** Active settings to display in spinner */
 	activeSettings?: string[];
+	/** Override default model for the engine */
+	modelOverride?: string;
+	/** Skip automatic branch merging after parallel execution */
+	skipMerge?: boolean;
 }
 
 export interface ExecutionResult {
@@ -57,6 +61,7 @@ export async function runSequential(options: ExecutionOptions): Promise<Executio
 		autoCommit,
 		browserEnabled,
 		activeSettings,
+		modelOverride,
 	} = options;
 
 	const result: ExecutionResult = {
@@ -120,13 +125,19 @@ export async function runSequential(options: ExecutionOptions): Promise<Executio
 						spinner.updateStep("Working");
 
 						// Use streaming if available
+						const engineOptions = modelOverride ? { modelOverride } : undefined;
 						if (engine.executeStreaming) {
-							return await engine.executeStreaming(prompt, workDir, (step) => {
-								spinner.updateStep(step);
-							});
+							return await engine.executeStreaming(
+								prompt,
+								workDir,
+								(step) => {
+									spinner.updateStep(step);
+								},
+								engineOptions,
+							);
 						}
 
-						const res = await engine.execute(prompt, workDir);
+						const res = await engine.execute(prompt, workDir, engineOptions);
 
 						if (!res.success && res.error && isRetryableError(res.error)) {
 							throw new Error(res.error);
@@ -140,7 +151,7 @@ export async function runSequential(options: ExecutionOptions): Promise<Executio
 						onRetry: (attempt) => {
 							spinner.updateStep(`Retry ${attempt}`);
 						},
-					}
+					},
 				);
 
 				if (aiResult.success) {
@@ -163,7 +174,7 @@ export async function runSequential(options: ExecutionOptions): Promise<Executio
 							task.title,
 							`Automated PR created by Ralphy\n\n${aiResult.response}`,
 							draftPr,
-							workDir
+							workDir,
 						);
 
 						if (prUrl) {

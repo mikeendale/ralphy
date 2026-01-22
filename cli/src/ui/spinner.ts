@@ -12,12 +12,16 @@ export class ProgressSpinner {
 	private currentStep = "Thinking";
 	private task: string;
 	private settings: string;
+	private tickInterval: ReturnType<typeof setInterval> | null = null;
 
 	constructor(task: string, settings?: string[]) {
 		this.task = task.length > 40 ? `${task.slice(0, 37)}...` : task;
 		this.settings = settings?.length ? `[${settings.join(", ")}]` : "";
 		this.startTime = Date.now();
 		this.spinner = createSpinner(this.formatText()).start();
+
+		// Update timer every second
+		this.tickInterval = setInterval(() => this.tick(), 1000);
 	}
 
 	private formatText(): string {
@@ -46,10 +50,18 @@ export class ProgressSpinner {
 		this.spinner.update({ text: this.formatText() });
 	}
 
+	private clearTickInterval(): void {
+		if (this.tickInterval) {
+			clearInterval(this.tickInterval);
+			this.tickInterval = null;
+		}
+	}
+
 	/**
 	 * Mark as success
 	 */
 	success(message?: string): void {
+		this.clearTickInterval();
 		this.spinner.success({ text: message || this.formatText() });
 	}
 
@@ -57,6 +69,7 @@ export class ProgressSpinner {
 	 * Mark as error
 	 */
 	error(message?: string): void {
+		this.clearTickInterval();
 		this.spinner.error({ text: message || this.formatText() });
 	}
 
@@ -64,6 +77,7 @@ export class ProgressSpinner {
 	 * Stop the spinner
 	 */
 	stop(): void {
+		this.clearTickInterval();
 		this.spinner.stop();
 	}
 }
