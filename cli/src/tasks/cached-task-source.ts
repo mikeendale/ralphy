@@ -15,10 +15,10 @@ interface CachedTaskSourceOptions {
  * - Loads tasks once and caches them in memory
  * - Tracks completions in memory for instant filtering
  * - Batches markComplete() writes with debouncing
- * - Flushes pending writes on process exit
  *
- * This dramatically reduces file I/O for task sources that
- * read/write the entire file on every operation.
+ * IMPORTANT: Caller must call flush() before process exit to persist changes.
+ * This class does NOT use exit handlers - async operations can't be awaited
+ * reliably in exit handlers, so explicit flush() is required.
  */
 export class CachedTaskSource implements TaskSource {
 	private inner: TaskSource;
@@ -26,22 +26,11 @@ export class CachedTaskSource implements TaskSource {
 	private pendingCompletions: Set<string> = new Set();
 	private flushTimer: ReturnType<typeof setTimeout> | null = null;
 	private flushIntervalMs: number;
-	private isShuttingDown = false;
-
-	/** Static registry of all instances for coordinated shutdown */
-	private static instances: Set<CachedTaskSource> = new Set();
-	/** Static flag to prevent duplicate exit handler registration */
-	private static exitHandlersRegistered = false;
+	private flushed = false;
 
 	constructor(inner: TaskSource, options?: CachedTaskSourceOptions) {
 		this.inner = inner;
 		this.flushIntervalMs = options?.flushIntervalMs ?? 1000;
-
-		// Track this instance for coordinated shutdown
-		CachedTaskSource.instances.add(this);
-
-		// Register exit handlers once globally (not per-instance)
-		CachedTaskSource.registerExitHandlers();
 	}
 
 	get type(): TaskSourceType {
@@ -114,15 +103,22 @@ export class CachedTaskSource implements TaskSource {
 
 	/**
 	 * Flush all pending completions to the underlying source.
-	 * Call this before exiting or when you need writes persisted immediately.
+	 * IMPORTANT: Always call this before process exit to ensure data is persisted.
+	 * The caller (run.ts) is responsible for calling flush() - we don't use exit
+	 * handlers because they can't reliably await async operations.
 	 */
 	async flush(): Promise<void> {
+		if (this.flushed) {
+			return;
+		}
+
 		if (this.flushTimer) {
 			clearTimeout(this.flushTimer);
 			this.flushTimer = null;
 		}
 
 		if (this.pendingCompletions.size === 0) {
+			this.flushed = true;
 			return;
 		}
 
@@ -131,6 +127,7 @@ export class CachedTaskSource implements TaskSource {
 			await this.inner.markComplete(id);
 		}
 		this.pendingCompletions.clear();
+		this.flushed = true;
 
 		// Invalidate cache so next read picks up any external changes
 		this.cachedTasks = null;
@@ -166,57 +163,6 @@ export class CachedTaskSource implements TaskSource {
 				console.error("CachedTaskSource: Failed to flush:", err);
 			});
 		}, this.flushIntervalMs);
-	}
-
-	/**
-	 * Flush this instance synchronously during shutdown.
-	 * Called by the static exit handler.
-	 */
-	private flushSync(): void {
-		if (this.isShuttingDown) return;
-		this.isShuttingDown = true;
-
-		if (this.pendingCompletions.size > 0) {
-			// Synchronous flush attempt - write each completion immediately
-			// This is a best-effort since we can't await in exit handlers.
-			// Note: markComplete() returns a Promise but markdown/yaml sources
-			// use synchronous writeFileSync internally, so this works.
-			for (const id of this.pendingCompletions) {
-				try {
-					this.inner.markComplete(id);
-				} catch {
-					// Best effort - ignore errors during shutdown
-				}
-			}
-		}
-	}
-
-	/**
-	 * Register global exit handlers once to flush all instances.
-	 * Uses a static flag to prevent duplicate registration.
-	 */
-	private static registerExitHandlers(): void {
-		if (CachedTaskSource.exitHandlersRegistered) {
-			return;
-		}
-		CachedTaskSource.exitHandlersRegistered = true;
-
-		const exitHandler = () => {
-			// Flush all tracked instances
-			for (const instance of CachedTaskSource.instances) {
-				instance.flushSync();
-			}
-		};
-
-		process.on("exit", exitHandler);
-		process.on("SIGINT", () => {
-			exitHandler();
-			process.exit(130);
-		});
-		process.on("SIGTERM", () => {
-			exitHandler();
-			process.exit(143);
-		});
 	}
 }
 
