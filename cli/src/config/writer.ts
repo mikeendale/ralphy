@@ -53,7 +53,7 @@ boundaries:
 /**
  * Escape a value for safe YAML string
  */
-function escapeYaml(value: string): string {
+function escapeYaml(value: string | undefined | null): string {
 	return (value || "").replace(/"/g, '\\"');
 }
 
