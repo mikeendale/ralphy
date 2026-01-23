@@ -230,6 +230,27 @@ capabilities:
   browser: "auto"  # "auto", "true", or "false"
 ```
 
+## Webhook Notifications
+
+Get notified when sessions complete via Discord, Slack, or custom webhooks.
+
+**Config** (`.ralphy/config.yaml`):
+```yaml
+notifications:
+  discord_webhook: "https://discord.com/api/webhooks/..."
+  slack_webhook: "https://hooks.slack.com/services/..."
+  custom_webhook: "https://your-api.com/webhook"
+```
+
+Notifications include task completion counts and status (completed/failed).
+
+## Sandbox Mode
+
+For large repos with big dependency directories, sandbox mode is faster than git worktrees.
+Uses symlinks for read-only dependencies (`node_modules`, `.git`, etc.) and copies source files.
+
+This is used internally during parallel execution when beneficial.
+
 ## Options
 
 | Flag | What it does |
@@ -294,6 +315,17 @@ capabilities:
 ---
 
 ## Changelog
+
+### v4.5.0
+- **sandbox mode**: lightweight isolation using symlinks for dependencies (faster than worktrees)
+- **performance improvements**: task caching, parallel merge analysis, smart branch ordering
+- **webhook notifications**: Discord, Slack, and custom webhooks for session completion (configure in `.ralphy/config.yaml`)
+- **engine-specific arguments**: pass arguments to underlying CLI via `--` separator
+- **Windows improvements**: better error handling for .cmd wrappers
+
+### v4.4.1
+- Windows line ending handling fixes
+- Windows Bun command resolution fixes
 
 ### v4.4.0
 - GitHub Copilot CLI support (`--copilot`)
