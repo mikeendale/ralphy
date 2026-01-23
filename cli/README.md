@@ -126,7 +126,7 @@ ralphy --parallel --max-parallel 5 # 5 agents
 
 Each agent gets isolated worktree + branch. Without `--create-pr`: auto-merges back with AI conflict resolution. With `--create-pr`: keeps branches, creates PRs. With `--no-merge`: keeps branches without merging.
 
-### Sandbox Mode
+### Sandbox Mode and Parallel Reliability
 
 For large repos with big `node_modules` or dependency directories, use sandbox mode instead of git worktrees:
 
@@ -139,6 +139,12 @@ Sandboxes are faster because they:
 - **Copy** only source files that agents might modify
 
 This avoids duplicating gigabytes of dependencies across worktrees. Changes are synced back to the original directory after each task completes.
+
+**Parallel execution reliability:**
+- If worktree operations fail (e.g., nested worktree repos), ralphy falls back to sandbox mode automatically
+- Retryable rate-limit or quota errors are detected and deferred for later retry
+- Local changes are stashed before the merge phase and restored after
+- Agents should not modify PRD files, `.ralphy/progress.txt`, `.ralphy-worktrees`, or `.ralphy-sandboxes`
 
 ## Branch Workflow
 

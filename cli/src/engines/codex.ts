@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, rmSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import { BaseAIEngine, execCommand } from "./base.ts";
+import { BaseAIEngine, execCommand, formatCommandError } from "./base.ts";
 import type { AIResult, EngineOptions } from "./types.ts";
 
 const isWindows = process.platform === "win32";
@@ -77,7 +77,7 @@ export class CodexEngine extends BaseAIEngine {
 					response: response || "Task completed",
 					inputTokens: 0,
 					outputTokens: 0,
-					error: `Command failed with exit code ${exitCode}`,
+					error: formatCommandError(exitCode, output),
 				};
 			}
 

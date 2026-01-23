@@ -46,6 +46,9 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions):
 export function isRetryableError(error: string): boolean {
 	const retryablePatterns = [
 		/rate limit/i,
+		/rate_limit/i,
+		/hit your limit/i,
+		/quota/i,
 		/too many requests/i,
 		/429/,
 		/timeout/i,

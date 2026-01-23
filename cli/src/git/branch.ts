@@ -78,10 +78,32 @@ export async function getCurrentBranch(workDir = process.cwd()): Promise<string>
 }
 
 /**
+ * Check if the repository has any commits
+ */
+export async function hasCommits(workDir = process.cwd()): Promise<boolean> {
+	const git: SimpleGit = simpleGit(workDir);
+	try {
+		await git.revparse(["HEAD"]);
+		return true;
+	} catch {
+		// rev-parse HEAD fails on repos with no commits
+		return false;
+	}
+}
+
+/**
  * Get the default base branch (main or master)
+ * Returns empty string if no commits exist (unborn branch)
  */
 export async function getDefaultBaseBranch(workDir = process.cwd()): Promise<string> {
 	const git: SimpleGit = simpleGit(workDir);
+
+	// Check if repo has any commits first
+	const repoHasCommits = await hasCommits(workDir);
+	if (!repoHasCommits) {
+		// Repository has no commits yet - return empty to signal unborn branch
+		return "";
+	}
 
 	// Try main first, then master
 	const branches = await git.branchLocal();

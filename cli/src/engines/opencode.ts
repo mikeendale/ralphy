@@ -1,4 +1,4 @@
-import { BaseAIEngine, checkForErrors, execCommand } from "./base.ts";
+import { BaseAIEngine, checkForErrors, execCommand, formatCommandError } from "./base.ts";
 import type { AIResult, EngineOptions } from "./types.ts";
 
 const isWindows = process.platform === "win32";
@@ -60,7 +60,7 @@ export class OpenCodeEngine extends BaseAIEngine {
 				response,
 				inputTokens,
 				outputTokens,
-				error: `Command failed with exit code ${exitCode}`,
+				error: formatCommandError(exitCode, output),
 			};
 		}
 

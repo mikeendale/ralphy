@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import simpleGit, { type SimpleGit } from "simple-git";
 import { logDebug } from "../ui/logger.ts";
@@ -77,6 +77,26 @@ export async function cleanupAgentWorktree(
 
 	// Don't delete branch - it may have commits we want to keep/PR
 	return { leftInPlace: false };
+}
+
+/**
+ * Check whether git worktrees are usable for this repo.
+ * If .git is a file (linked worktree), nested worktrees can fail.
+ */
+export function canUseWorktrees(workDir: string): boolean {
+	const gitPath = join(workDir, ".git");
+	if (!existsSync(gitPath)) return false;
+
+	try {
+		const stat = lstatSync(gitPath);
+		if (stat.isFile() || stat.isSymbolicLink()) {
+			return false;
+		}
+	} catch {
+		return false;
+	}
+
+	return true;
 }
 
 /**

@@ -4,6 +4,7 @@ import {
 	detectStepFromOutput,
 	execCommand,
 	execCommandStreaming,
+	formatCommandError,
 } from "./base.ts";
 import type { AIResult, EngineOptions, ProgressCallback } from "./types.ts";
 
@@ -66,7 +67,7 @@ export class CursorEngine extends BaseAIEngine {
 				response,
 				inputTokens: 0,
 				outputTokens: 0,
-				error: `Command failed with exit code ${exitCode}`,
+				error: formatCommandError(exitCode, output),
 			};
 		}
 
@@ -179,7 +180,7 @@ export class CursorEngine extends BaseAIEngine {
 				response,
 				inputTokens: 0,
 				outputTokens: 0,
-				error: `Command failed with exit code ${exitCode}`,
+				error: formatCommandError(exitCode, output),
 			};
 		}
 

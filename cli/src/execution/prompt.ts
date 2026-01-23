@@ -10,6 +10,7 @@ interface PromptOptions {
 	browserEnabled?: "auto" | "true" | "false";
 	skipTests?: boolean;
 	skipLint?: boolean;
+	prdFile?: string;
 }
 
 /**
@@ -38,6 +39,7 @@ export function buildPrompt(options: PromptOptions): string {
 		browserEnabled = "auto",
 		skipTests = false,
 		skipLint = false,
+		prdFile,
 	} = options;
 
 	const parts: string[] = [];
@@ -111,7 +113,14 @@ export function buildPrompt(options: PromptOptions): string {
 	parts.push(`## Instructions\n${instructions.join("\n")}`);
 
 	// Add final note
-	parts.push("Keep changes focused and minimal. Do not refactor unrelated code.");
+	const prdNote = prdFile ? `Do NOT modify ${prdFile}.` : "Do NOT modify the PRD file.";
+	parts.push(
+		[
+			prdNote,
+			"Do NOT modify .ralphy/progress.txt, .ralphy-worktrees, or .ralphy-sandboxes.",
+			"Keep changes focused and minimal. Do not refactor unrelated code.",
+		].join(" "),
+	);
 
 	return parts.join("\n\n");
 }
@@ -119,6 +128,7 @@ export function buildPrompt(options: PromptOptions): string {
 interface ParallelPromptOptions {
 	task: string;
 	progressFile: string;
+	prdFile?: string;
 	skipTests?: boolean;
 	skipLint?: boolean;
 	browserEnabled?: "auto" | "true" | "false";
@@ -132,6 +142,7 @@ export function buildParallelPrompt(options: ParallelPromptOptions): string {
 	const {
 		task,
 		progressFile,
+		prdFile,
 		skipTests = false,
 		skipLint = false,
 		browserEnabled = "auto",
@@ -184,6 +195,8 @@ TASK: ${task}${browserSection}${skillsSection}
 Instructions:
 ${instructions.join("\n")}
 
-Do NOT modify PRD.md or mark tasks complete - that will be handled separately.
+${prdFile ? `Do NOT modify ${prdFile}.` : "Do NOT modify the PRD file."}
+Do NOT modify .ralphy/progress.txt, .ralphy-worktrees, or .ralphy-sandboxes.
+Do NOT mark tasks complete - that will be handled separately.
 Focus only on implementing: ${task}`;
 }

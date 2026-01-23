@@ -4,6 +4,7 @@ import {
 	detectStepFromOutput,
 	execCommand,
 	execCommandStreaming,
+	formatCommandError,
 	parseStreamJsonResult,
 } from "./base.ts";
 import type { AIResult, EngineOptions, ProgressCallback } from "./types.ts";
@@ -68,7 +69,7 @@ export class QwenEngine extends BaseAIEngine {
 				response,
 				inputTokens,
 				outputTokens,
-				error: `Command failed with exit code ${exitCode}`,
+				error: formatCommandError(exitCode, output),
 			};
 		}
 
@@ -147,7 +148,7 @@ export class QwenEngine extends BaseAIEngine {
 				response,
 				inputTokens,
 				outputTokens,
-				error: `Command failed with exit code ${exitCode}`,
+				error: formatCommandError(exitCode, output),
 			};
 		}
 

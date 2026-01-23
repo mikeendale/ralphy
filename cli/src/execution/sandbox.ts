@@ -8,8 +8,8 @@ import {
 	readlinkSync,
 	rmSync,
 	statSync,
-	utimesSync,
 	symlinkSync,
+	utimesSync,
 } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import { logDebug } from "../ui/logger.ts";

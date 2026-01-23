@@ -152,6 +152,20 @@ export function checkForErrors(output: string): string | null {
 }
 
 /**
+ * Format a command failure with useful output context.
+ */
+export function formatCommandError(exitCode: number, output: string): string {
+	const trimmed = output.trim();
+	if (!trimmed) {
+		return `Command failed with exit code ${exitCode}`;
+	}
+
+	const lines = trimmed.split("\n").filter(Boolean);
+	const snippet = lines.slice(-12).join("\n");
+	return `Command failed with exit code ${exitCode}. Output:\n${snippet}`;
+}
+
+/**
  * Read a stream line by line, calling onLine for each non-empty line
  */
 async function readStream(

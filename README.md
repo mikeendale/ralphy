@@ -266,6 +266,12 @@ ralphy --parallel --sandbox
 - Running `git` commands that require a real repo
 - Smaller repos where worktree overhead is minimal
 
+**Parallel execution reliability:**
+- If worktree operations fail (e.g., nested worktree repos), ralphy falls back to sandbox mode automatically
+- Retryable rate-limit or quota errors are detected and deferred for later retry
+- Local changes are stashed before the merge phase and restored after
+- Agents should not modify PRD files, `.ralphy/progress.txt`, `.ralphy-worktrees`, or `.ralphy-sandboxes`
+
 ## Options
 
 | Flag | What it does |
@@ -328,9 +334,18 @@ ralphy --parallel --sandbox
 | Droid | `droid exec` | `--auto medium` | duration |
 | Copilot | `copilot` | `-p` flag | duration |
 
+When an engine exits non-zero, ralphy includes the last lines of CLI output in the error message to make debugging easier.
+
 ---
 
 ## Changelog
+
+### v4.5.3
+- parallel reliability: fallback to sandbox mode on worktree errors
+- error output: include CLI output snippet for failed engine commands
+- retry handling: detect rate-limit/quota errors and stop early
+- merge safety: stash local changes before merge phase and restore after
+- prompts: explicitly avoid PRD and `.ralphy` progress/sandbox/worktree edits
 
 ### v4.5.0
 - **sandbox mode**: lightweight isolation using symlinks for dependencies (faster than worktrees)
