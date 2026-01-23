@@ -154,7 +154,8 @@ async function runAgentInSandbox(
 	modelOverride?: string,
 	engineArgs?: string[],
 ): Promise<ParallelAgentResult> {
-	const sandboxDir = join(sandboxBase, `agent-${agentNum}-${Date.now()}`);
+	const uniqueSuffix = Math.random().toString(36).substring(2, 8);
+	const sandboxDir = join(sandboxBase, `agent-${agentNum}-${uniqueSuffix}`);
 	let branchName = "";
 
 	try {
@@ -403,25 +404,32 @@ export async function runParallel(
 			} = agentResult;
 			let branchName = agentResult.branchName;
 			let failureReason: string | undefined = error;
+			let preserveSandbox = false;
 
 			if (!failureReason && aiResult?.success && agentUsedSandbox && worktreeDir) {
-				const modifiedFiles = await getModifiedFiles(worktreeDir, workDir);
-				if (modifiedFiles.length > 0) {
-					const commitResult = await commitSandboxChanges(
-						workDir,
-						modifiedFiles,
-						worktreeDir,
-						task.title,
-						agentNum,
-						originalBaseBranch,
-					);
+				try {
+					const modifiedFiles = await getModifiedFiles(worktreeDir, workDir);
+					if (modifiedFiles.length > 0) {
+						const commitResult = await commitSandboxChanges(
+							workDir,
+							modifiedFiles,
+							worktreeDir,
+							task.title,
+							agentNum,
+							originalBaseBranch,
+						);
 
-					if (commitResult.success) {
-						branchName = commitResult.branchName;
-						logDebug(`Agent ${agentNum}: Committed ${commitResult.filesCommitted} files to ${branchName}`);
-					} else {
-						failureReason = commitResult.error || "Failed to commit sandbox changes";
+						if (commitResult.success) {
+							branchName = commitResult.branchName;
+							logDebug(`Agent ${agentNum}: Committed ${commitResult.filesCommitted} files to ${branchName}`);
+						} else {
+							failureReason = commitResult.error || "Failed to commit sandbox changes";
+							preserveSandbox = true; // Preserve work for manual recovery
+						}
 					}
+				} catch (commitErr) {
+					failureReason = commitErr instanceof Error ? commitErr.message : String(commitErr);
+					preserveSandbox = true; // Preserve work for manual recovery
 				}
 			}
 
@@ -456,7 +464,7 @@ export async function runParallel(
 			// Cleanup sandbox inline or collect worktree for parallel cleanup
 			if (worktreeDir) {
 				if (agentUsedSandbox) {
-					if (failureReason) {
+					if (failureReason || preserveSandbox) {
 						logWarn(`Sandbox preserved for manual review: ${worktreeDir}`);
 					} else {
 						// Sandbox cleanup is simpler - just delete the directory

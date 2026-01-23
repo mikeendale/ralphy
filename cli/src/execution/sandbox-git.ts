@@ -5,6 +5,31 @@ import { slugify } from "../git/branch.ts";
 import { logDebug } from "../ui/logger.ts";
 
 /**
+ * Simple mutex to serialize git operations across sandbox agents.
+ * Prevents race conditions when multiple agents commit through shared .git.
+ */
+class GitMutex {
+	private queue: Promise<void> = Promise.resolve();
+
+	async acquire<T>(fn: () => Promise<T>): Promise<T> {
+		let release: () => void;
+		const next = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const prev = this.queue;
+		this.queue = next;
+		await prev;
+		try {
+			return await fn();
+		} finally {
+			release!();
+		}
+	}
+}
+
+const gitMutex = new GitMutex();
+
+/**
  * Generate a unique identifier for branch names
  */
 function generateUniqueId(): string {
@@ -50,69 +75,74 @@ export async function commitSandboxChanges(
 
 	const uniqueId = generateUniqueId();
 	const branchName = `ralphy/agent-${agentNum}-${uniqueId}-${slugify(taskName)}`;
-	const git: SimpleGit = simpleGit(originalDir);
 
-	try {
-		// Save current branch
-		const currentBranch = (await git.branch()).current;
+	// Serialize git operations to prevent race conditions
+	return gitMutex.acquire(async () => {
+		const git: SimpleGit = simpleGit(originalDir);
 
-		// Create and checkout new branch from base
-		await git.checkout(["-B", branchName, baseBranch]);
-
-		// Copy modified files from sandbox to original
-		for (const relPath of modifiedFiles) {
-			const sandboxPath = join(sandboxDir, relPath);
-			const originalPath = join(originalDir, relPath);
-
-			if (existsSync(sandboxPath)) {
-				const parentDir = dirname(originalPath);
-				if (!existsSync(parentDir)) {
-					mkdirSync(parentDir, { recursive: true });
-				}
-
-				// Read from sandbox and write to original
-				const content = readFileSync(sandboxPath);
-				writeFileSync(originalPath, content);
-			}
-		}
-
-		// Stage all modified files
-		await git.add(modifiedFiles);
-
-		// Commit
-		const commitMessage = `feat: ${taskName}\n\nAutomated commit by Ralphy agent ${agentNum}`;
-		await git.commit(commitMessage);
-
-		logDebug(`Agent ${agentNum}: Committed ${modifiedFiles.length} files to ${branchName}`);
-
-		// Return to original branch
-		await git.checkout(currentBranch);
-
-		return {
-			success: true,
-			branchName,
-			filesCommitted: modifiedFiles.length,
-		};
-	} catch (error) {
-		const errorMsg = error instanceof Error ? error.message : String(error);
-
-		// Try to return to a safe state
 		try {
-			const branches = await git.branch();
-			if (branches.current !== baseBranch) {
-				await git.checkout(baseBranch);
-			}
-		} catch {
-			// Ignore cleanup errors
-		}
+			// Save current branch
+			const currentBranch = (await git.branch()).current;
 
-		return {
-			success: false,
-			branchName,
-			filesCommitted: 0,
-			error: errorMsg,
-		};
-	}
+			// Create and checkout new branch from base
+			await git.checkout(["-B", branchName, baseBranch]);
+
+			// Copy modified files from sandbox to original
+			for (const relPath of modifiedFiles) {
+				const sandboxPath = join(sandboxDir, relPath);
+				const originalPath = join(originalDir, relPath);
+
+				if (existsSync(sandboxPath)) {
+					const parentDir = dirname(originalPath);
+					if (!existsSync(parentDir)) {
+						mkdirSync(parentDir, { recursive: true });
+					}
+
+					// Read from sandbox and write to original
+					const content = readFileSync(sandboxPath);
+					writeFileSync(originalPath, content);
+				}
+			}
+
+			// Stage all modified files
+			await git.add(modifiedFiles);
+
+			// Commit
+			const commitMessage = `feat: ${taskName}\n\nAutomated commit by Ralphy agent ${agentNum}`;
+			await git.commit(commitMessage);
+
+			logDebug(`Agent ${agentNum}: Committed ${modifiedFiles.length} files to ${branchName}`);
+
+			// Return to original branch
+			await git.checkout(currentBranch);
+
+			return {
+				success: true,
+				branchName,
+				filesCommitted: modifiedFiles.length,
+			};
+		} catch (error) {
+			const errorMsg = error instanceof Error ? error.message : String(error);
+
+			// Try to return to a safe state
+			try {
+				const git: SimpleGit = simpleGit(originalDir);
+				const branches = await git.branch();
+				if (branches.current !== baseBranch) {
+					await git.checkout(baseBranch);
+				}
+			} catch {
+				// Ignore cleanup errors
+			}
+
+			return {
+				success: false,
+				branchName,
+				filesCommitted: 0,
+				error: errorMsg,
+			};
+		}
+	});
 }
 
 /**

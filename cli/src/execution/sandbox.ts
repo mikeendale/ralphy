@@ -123,75 +123,83 @@ export async function createSandbox(options: SandboxOptions): Promise<SandboxRes
 	}
 	mkdirSync(sandboxDir, { recursive: true });
 
-	// Get all items in the original directory
-	const items = readdirSync(originalDir);
+	try {
+		// Get all items in the original directory
+		const items = readdirSync(originalDir);
 
-	// Track which items we've handled
-	const handled = new Set<string>();
+		// Track which items we've handled
+		const handled = new Set<string>();
 
-	// Step 1: Create symlinks for read-only dependencies
-	for (const item of items) {
-		if (symlinkDirs.includes(item)) {
+		// Step 1: Create symlinks for read-only dependencies
+		for (const item of items) {
+			if (symlinkDirs.includes(item)) {
+				const originalPath = join(originalDir, item);
+				const sandboxPath = join(sandboxDir, item);
+
+				if (existsSync(originalPath)) {
+					try {
+						// Create symlink (use 'junction' on Windows for directories)
+						const stat = lstatSync(originalPath);
+						const type = stat.isDirectory() ? "junction" : "file";
+						symlinkSync(originalPath, sandboxPath, type);
+						symlinksCreated++;
+						handled.add(item);
+						logDebug(`Agent ${agentNum}: Symlinked ${item}`);
+					} catch (err) {
+						// Symlink failed, will copy instead
+						logDebug(`Agent ${agentNum}: Symlink failed for ${item}, will copy`);
+					}
+				}
+			}
+		}
+
+		// Step 2: Copy everything else
+		for (const item of items) {
+			if (handled.has(item)) continue;
+
 			const originalPath = join(originalDir, item);
 			const sandboxPath = join(sandboxDir, item);
 
-			if (existsSync(originalPath)) {
-				try {
-					// Create symlink (use 'junction' on Windows for directories)
-					const stat = lstatSync(originalPath);
-					const type = stat.isDirectory() ? "junction" : "file";
-					symlinkSync(originalPath, sandboxPath, type);
+			// Skip if it's a symlink pointing outside (like node_modules might be)
+			try {
+				const stat = lstatSync(originalPath);
+
+				if (stat.isSymbolicLink()) {
+					// Copy the symlink target if it points within the project
+					const target = readlinkSync(originalPath);
+					symlinkSync(target, sandboxPath);
 					symlinksCreated++;
-					handled.add(item);
-					logDebug(`Agent ${agentNum}: Symlinked ${item}`);
-				} catch (err) {
-					// Symlink failed, will copy instead
-					logDebug(`Agent ${agentNum}: Symlink failed for ${item}, will copy`);
+				} else if (stat.isDirectory()) {
+					// Copy directory recursively, preserving timestamps for change detection
+					cpSync(originalPath, sandboxPath, { recursive: true, preserveTimestamps: true });
+					filesCopied++;
+				} else if (stat.isFile()) {
+					// Copy file and preserve timestamps for change detection
+					copyFileSync(originalPath, sandboxPath);
+					try {
+						utimesSync(sandboxPath, stat.atime, stat.mtime);
+					} catch (utimeErr) {
+						logDebug(`Agent ${agentNum}: Failed to preserve timestamps for ${item}: ${utimeErr}`);
+					}
+					filesCopied++;
 				}
+			} catch (err) {
+				logDebug(`Agent ${agentNum}: Failed to copy ${item}: ${err}`);
 			}
 		}
-	}
 
-	// Step 2: Copy everything else
-	for (const item of items) {
-		if (handled.has(item)) continue;
-
-		const originalPath = join(originalDir, item);
-		const sandboxPath = join(sandboxDir, item);
-
-		// Skip if it's a symlink pointing outside (like node_modules might be)
-		try {
-			const stat = lstatSync(originalPath);
-
-			if (stat.isSymbolicLink()) {
-				// Copy the symlink target if it points within the project
-				const target = readlinkSync(originalPath);
-				symlinkSync(target, sandboxPath);
-				symlinksCreated++;
-			} else if (stat.isDirectory()) {
-				// Copy directory recursively, preserving timestamps for change detection
-				cpSync(originalPath, sandboxPath, { recursive: true, preserveTimestamps: true });
-				filesCopied++;
-			} else if (stat.isFile()) {
-				// Copy file and preserve timestamps for change detection
-				copyFileSync(originalPath, sandboxPath);
-				try {
-					utimesSync(sandboxPath, stat.atime, stat.mtime);
-				} catch (utimeErr) {
-					logDebug(`Agent ${agentNum}: Failed to preserve timestamps for ${item}: ${utimeErr}`);
-				}
-				filesCopied++;
-			}
-		} catch (err) {
-			logDebug(`Agent ${agentNum}: Failed to copy ${item}: ${err}`);
+		return {
+			sandboxDir,
+			symlinksCreated,
+			filesCopied,
+		};
+	} catch (err) {
+		// Cleanup partial sandbox on failure
+		if (existsSync(sandboxDir)) {
+			rmSync(sandboxDir, { recursive: true, force: true });
 		}
+		throw err;
 	}
-
-	return {
-		sandboxDir,
-		symlinksCreated,
-		filesCopied,
-	};
 }
 
 /**
