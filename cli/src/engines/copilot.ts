@@ -4,8 +4,11 @@ import {
 	detectStepFromOutput,
 	execCommand,
 	execCommandStreaming,
+	formatCommandError,
 } from "./base.ts";
 import type { AIResult, EngineOptions, ProgressCallback } from "./types.ts";
+
+const isWindows = process.platform === "win32";
 
 /**
  * GitHub Copilot CLI AI Engine
@@ -16,20 +19,44 @@ export class CopilotEngine extends BaseAIEngine {
 
 	/**
 	 * Build command arguments for Copilot CLI
+	 * Returns args array and optional stdin content for Windows
 	 */
-	private buildArgs(prompt: string, options?: EngineOptions): string[] {
-		const args = ["-p", prompt];
+	private buildArgs(
+		prompt: string,
+		options?: EngineOptions,
+	): { args: string[]; stdinContent?: string } {
+		const args: string[] = [];
+
+		// On Windows, pass prompt via stdin to avoid cmd.exe argument parsing issues
+		let stdinContent: string | undefined;
+		if (isWindows) {
+			args.push("-p");
+			stdinContent = prompt;
+		} else {
+			args.push("-p", prompt);
+		}
+
 		if (options?.modelOverride) {
 			args.push("--model", options.modelOverride);
 		}
-		return args;
+		// Add any additional engine-specific arguments
+		if (options?.engineArgs && options.engineArgs.length > 0) {
+			args.push(...options.engineArgs);
+		}
+		return { args, stdinContent };
 	}
 
 	async execute(prompt: string, workDir: string, options?: EngineOptions): Promise<AIResult> {
-		const args = this.buildArgs(prompt, options);
+		const { args, stdinContent } = this.buildArgs(prompt, options);
 
 		const startTime = Date.now();
-		const { stdout, stderr, exitCode } = await execCommand(this.cliCommand, args, workDir);
+		const { stdout, stderr, exitCode } = await execCommand(
+			this.cliCommand,
+			args,
+			workDir,
+			undefined,
+			stdinContent,
+		);
 		const durationMs = Date.now() - startTime;
 
 		const output = stdout + stderr;
@@ -49,8 +76,19 @@ export class CopilotEngine extends BaseAIEngine {
 		// Parse Copilot output - extract response from output
 		const response = this.parseOutput(output);
 
+		// If command failed with non-zero exit code, provide a meaningful error
+		if (exitCode !== 0) {
+			return {
+				success: false,
+				response,
+				inputTokens: 0,
+				outputTokens: 0,
+				error: formatCommandError(exitCode, output),
+			};
+		}
+
 		return {
-			success: exitCode === 0,
+			success: true,
 			response,
 			inputTokens: 0, // Copilot CLI doesn't expose token counts in programmatic mode
 			outputTokens: 0,
@@ -86,20 +124,27 @@ export class CopilotEngine extends BaseAIEngine {
 		onProgress: ProgressCallback,
 		options?: EngineOptions,
 	): Promise<AIResult> {
-		const args = this.buildArgs(prompt, options);
+		const { args, stdinContent } = this.buildArgs(prompt, options);
 
 		const outputLines: string[] = [];
 		const startTime = Date.now();
 
-		const { exitCode } = await execCommandStreaming(this.cliCommand, args, workDir, (line) => {
-			outputLines.push(line);
+		const { exitCode } = await execCommandStreaming(
+			this.cliCommand,
+			args,
+			workDir,
+			(line) => {
+				outputLines.push(line);
 
-			// Detect and report step changes
-			const step = detectStepFromOutput(line);
-			if (step) {
-				onProgress(step);
-			}
-		});
+				// Detect and report step changes
+				const step = detectStepFromOutput(line);
+				if (step) {
+					onProgress(step);
+				}
+			},
+			undefined,
+			stdinContent,
+		);
 
 		const durationMs = Date.now() - startTime;
 		const output = outputLines.join("\n");
@@ -119,8 +164,19 @@ export class CopilotEngine extends BaseAIEngine {
 		// Parse Copilot output
 		const response = this.parseOutput(output);
 
+		// If command failed with non-zero exit code, provide a meaningful error
+		if (exitCode !== 0) {
+			return {
+				success: false,
+				response,
+				inputTokens: 0,
+				outputTokens: 0,
+				error: formatCommandError(exitCode, output),
+			};
+		}
+
 		return {
-			success: exitCode === 0,
+			success: true,
 			response,
 			inputTokens: 0,
 			outputTokens: 0,

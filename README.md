@@ -2,6 +2,8 @@
 
 [![npm version](https://img.shields.io/npm/v/ralphy-cli.svg)](https://www.npmjs.com/package/ralphy-cli)
 
+**[Join our Discord](https://discord.gg/SZZV74mCuV)** - Questions? Want to contribute? Join the community!
+
 ![Ralphy](assets/ralphy.jpeg)
 
 Autonomous AI coding loop. Runs AI agents on tasks until done.
@@ -129,6 +131,23 @@ ralphy --opencode --model opencode/glm-4.7-free "task" # custom OpenCode model
 ralphy --qwen --model qwen-max "build api"             # custom Qwen model
 ```
 
+### Engine-Specific Arguments
+
+Pass additional arguments to the underlying engine CLI using `--` separator:
+
+```bash
+# Pass copilot-specific arguments
+ralphy --copilot --model "claude-opus-4.5" --prd PRD.md -- --allow-all-tools --allow-all-urls --stream on
+
+# Pass claude-specific arguments  
+ralphy --claude "add feature" -- --no-permissions-prompt
+
+# Works with any engine
+ralphy --cursor "fix bug" -- --custom-arg value
+```
+
+Everything after `--` is passed directly to the engine CLI without interpretation.
+
 ## Task Sources
 
 **Markdown file** (default):
@@ -255,6 +274,48 @@ capabilities:
   browser: "auto"  # "auto", "true", or "false"
 ```
 
+## Webhook Notifications
+
+Get notified when sessions complete via Discord, Slack, or custom webhooks.
+
+**Config** (`.ralphy/config.yaml`):
+```yaml
+notifications:
+  discord_webhook: "https://discord.com/api/webhooks/..."
+  slack_webhook: "https://hooks.slack.com/services/..."
+  custom_webhook: "https://your-api.com/webhook"
+```
+
+Notifications include task completion counts and status (completed/failed).
+
+## Sandbox Mode
+
+For large repos with big dependency directories, sandbox mode is faster than git worktrees:
+
+```bash
+ralphy --parallel --sandbox
+```
+
+**How it works:**
+- **Symlinks** read-only dependencies (`node_modules`, `.git`, `vendor`, `.venv`, `.pnpm-store`, `.yarn`, `.cache`)
+- **Copies** source files that agents might modify (`src/`, `app/`, `lib/`, config files, etc.)
+
+**Why use it:**
+- Avoids duplicating gigabytes of `node_modules` across worktrees
+- Much faster sandbox creation for large monorepos
+- Changes sync back to original directory after each task
+
+**When to use worktrees instead (default):**
+- Need full git history access in each sandbox
+- Running `git` commands that require a real repo
+- Smaller repos where worktree overhead is minimal
+
+**Parallel execution reliability:**
+- If worktree operations fail (e.g., nested worktree repos), ralphy falls back to sandbox mode automatically
+- Retryable rate-limit or quota errors are detected and deferred for later retry
+- Local changes are stashed before the merge phase and restored after
+- Agents should not modify PRD files, `.ralphy/progress.txt`, `.ralphy-worktrees`, or `.ralphy-sandboxes`
+
 ## Options
 
 | Flag | What it does |
@@ -267,6 +328,7 @@ capabilities:
 | `--sonnet` | shortcut for `--claude --model sonnet` |
 | `--parallel` | run parallel |
 | `--max-parallel N` | max agents (default: 3) |
+| `--sandbox` | use lightweight sandboxes instead of git worktrees |
 | `--no-merge` | skip auto-merge in parallel mode |
 | `--branch-per-task` | branch per task |
 | `--base-branch NAME` | base branch |
@@ -320,15 +382,29 @@ capabilities:
 | Droid | `droid exec` | `--auto medium` | duration |
 | Copilot | `copilot` | `-p` flag | duration |
 
+When an engine exits non-zero, ralphy includes the last lines of CLI output in the error message to make debugging easier.
+
 ---
 
 ## Changelog
 
+### v4.5.3
+- parallel reliability: fallback to sandbox mode on worktree errors
+- error output: include CLI output snippet for failed engine commands
+- retry handling: detect rate-limit/quota errors and stop early
+- merge safety: stash local changes before merge phase and restore after
+- prompts: explicitly avoid PRD and `.ralphy` progress/sandbox/worktree edits
+
 ### v4.5.0
-- Plan mode: `--plan` for interactive specification interviews (bash script only)
-- Generates PRD and task breakdown before implementation
-- Resume interrupted sessions with `--resume`
-- Add context files with `--context`
+- **sandbox mode**: lightweight isolation using symlinks for dependencies (faster than worktrees)
+- **performance improvements**: task caching, parallel merge analysis, smart branch ordering
+- **webhook notifications**: Discord, Slack, and custom webhooks for session completion (configure in `.ralphy/config.yaml`)
+- **engine-specific arguments**: pass arguments to underlying CLI via `--` separator
+- **Windows improvements**: better error handling for .cmd wrappers
+
+### v4.4.1
+- Windows line ending handling fixes
+- Windows Bun command resolution fixes
 
 ### v4.4.0
 - GitHub Copilot CLI support (`--copilot`)

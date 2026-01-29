@@ -1,11 +1,8 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFile } from "node:fs/promises";
 import YAML from "yaml";
 import { detectProject } from "./detector.ts";
-import {
-	getConfigPath,
-	getProgressPath,
-	getRalphyDir,
-} from "./loader.ts";
+import { getConfigPath, getProgressPath, getRalphyDir } from "./loader.ts";
 import type { RalphyConfig } from "./types.ts";
 
 /**
@@ -111,8 +108,44 @@ export function addRule(rule: string, workDir = process.cwd()): void {
 	writeFileSync(configPath, YAML.stringify(parsed), "utf-8");
 }
 
+/** Queue for batching progress writes */
+const progressWriteQueue: Map<string, string[]> = new Map();
+let flushTimeout: ReturnType<typeof setTimeout> | null = null;
+
 /**
- * Log a task to the progress file
+ * Flush all pending progress writes to disk
+ */
+async function flushProgressWrites(): Promise<void> {
+	if (progressWriteQueue.size === 0) return;
+
+	const entries = [...progressWriteQueue.entries()];
+	progressWriteQueue.clear();
+	flushTimeout = null;
+
+	for (const [path, lines] of entries) {
+		try {
+			await appendFile(path, lines.join(""), "utf-8");
+		} catch {
+			// Ignore write errors for progress logging
+		}
+	}
+}
+
+/**
+ * Schedule a flush of progress writes (debounced)
+ */
+function scheduleFlush(): void {
+	if (flushTimeout) return;
+	flushTimeout = setTimeout(() => {
+		void flushProgressWrites();
+	}, 100); // Batch writes within 100ms window
+}
+
+/**
+ * Log a task to the progress file (async, batched)
+ *
+ * Performance optimized: uses async I/O and batches writes within 100ms windows
+ * to reduce file system contention in parallel mode.
  */
 export function logTaskProgress(
 	task: string,
@@ -129,5 +162,23 @@ export function logTaskProgress(
 	const icon = status === "completed" ? "✓" : "✗";
 	const line = `- [${icon}] ${timestamp} - ${task}\n`;
 
-	appendFileSync(progressPath, line, "utf-8");
+	// Add to write queue
+	const existing = progressWriteQueue.get(progressPath) || [];
+	existing.push(line);
+	progressWriteQueue.set(progressPath, existing);
+
+	// Schedule async flush
+	scheduleFlush();
+}
+
+/**
+ * Force flush all pending progress writes immediately
+ * Call this before process exit to ensure all writes are persisted
+ */
+export async function flushAllProgressWrites(): Promise<void> {
+	if (flushTimeout) {
+		clearTimeout(flushTimeout);
+		flushTimeout = null;
+	}
+	await flushProgressWrites();
 }

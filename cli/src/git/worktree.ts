@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import simpleGit, { type SimpleGit } from "simple-git";
 import { logDebug } from "../ui/logger.ts";
@@ -16,6 +16,8 @@ function generateUniqueId(): string {
 
 /**
  * Create a worktree for parallel agent execution
+ *
+ * Performance optimized: only prunes once, and only if cleanup is needed.
  */
 export async function createAgentWorktree(
 	taskName: string,
@@ -30,13 +32,11 @@ export async function createAgentWorktree(
 
 	const git: SimpleGit = simpleGit(originalDir);
 
-	// Prune stale worktrees first
-	await git.raw(["worktree", "prune"]);
-
 	// Remove existing worktree dir if any (from previous failed runs)
+	// Only prune if we actually remove something
 	if (existsSync(worktreeDir)) {
 		rmSync(worktreeDir, { recursive: true, force: true });
-		// Prune again after removing directory
+		// Prune stale worktrees after removing directory
 		await git.raw(["worktree", "prune"]);
 	}
 
@@ -77,6 +77,26 @@ export async function cleanupAgentWorktree(
 
 	// Don't delete branch - it may have commits we want to keep/PR
 	return { leftInPlace: false };
+}
+
+/**
+ * Check whether git worktrees are usable for this repo.
+ * If .git is a file (linked worktree), nested worktrees can fail.
+ */
+export function canUseWorktrees(workDir: string): boolean {
+	const gitPath = join(workDir, ".git");
+	if (!existsSync(gitPath)) return false;
+
+	try {
+		const stat = lstatSync(gitPath);
+		if (stat.isFile() || stat.isSymbolicLink()) {
+			return false;
+		}
+	} catch {
+		return false;
+	}
+
+	return true;
 }
 
 /**

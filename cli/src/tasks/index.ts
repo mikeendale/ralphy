@@ -3,6 +3,7 @@ export * from "./markdown.ts";
 export * from "./markdown-folder.ts";
 export * from "./yaml.ts";
 export * from "./github.ts";
+export * from "./cached-task-source.ts";
 
 import { GitHubTaskSource } from "./github.ts";
 import { MarkdownFolderTaskSource } from "./markdown-folder.ts";

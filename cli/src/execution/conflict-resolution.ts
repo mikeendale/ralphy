@@ -36,6 +36,7 @@ export async function resolveConflictsWithAI(
 	branchName: string,
 	workDir: string,
 	modelOverride?: string,
+	engineArgs?: string[],
 ): Promise<boolean> {
 	if (conflictedFiles.length === 0) {
 		return true;
@@ -45,7 +46,10 @@ export async function resolveConflictsWithAI(
 	logDebug(`Conflicted files: ${conflictedFiles.join(", ")}`);
 
 	const prompt = buildConflictResolutionPrompt(conflictedFiles, branchName);
-	const engineOptions = modelOverride ? { modelOverride } : undefined;
+	const engineOptions = {
+		...(modelOverride && { modelOverride }),
+		...(engineArgs && engineArgs.length > 0 && { engineArgs }),
+	};
 
 	try {
 		const result = await engine.execute(prompt, workDir, engineOptions);

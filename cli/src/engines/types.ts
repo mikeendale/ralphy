@@ -17,6 +17,8 @@ export interface AIResult {
 export interface EngineOptions {
 	/** Override the default model */
 	modelOverride?: string;
+	/** Additional arguments to pass to the engine CLI */
+	engineArgs?: string[];
 }
 
 /**
@@ -48,4 +50,11 @@ export interface AIEngine {
 /**
  * Supported AI engine names
  */
-export type AIEngineName = "claude" | "opencode" | "cursor" | "codex" | "qwen" | "droid" | "copilot";
+export type AIEngineName =
+	| "claude"
+	| "opencode"
+	| "cursor"
+	| "codex"
+	| "qwen"
+	| "droid"
+	| "copilot";

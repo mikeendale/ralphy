@@ -50,7 +50,8 @@ export function loadConfig(workDir = process.cwd()): RalphyConfig | null {
 		const parsed = YAML.parse(content);
 		return RalphyConfigSchema.parse(parsed);
 	} catch (error) {
-		// Return default config if parsing fails
+		// Log error for debugging, but return default config
+		console.error(`Warning: Failed to parse config at ${configPath}:`, error);
 		return RalphyConfigSchema.parse({});
 	}
 }

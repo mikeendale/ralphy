@@ -4,6 +4,7 @@ import { addRule, showConfig } from "./cli/commands/config.ts";
 import { runInit } from "./cli/commands/init.ts";
 import { runLoop } from "./cli/commands/run.ts";
 import { runTask } from "./cli/commands/task.ts";
+import { flushAllProgressWrites } from "./config/writer.ts";
 import { logError } from "./ui/logger.ts";
 
 async function main(): Promise<void> {
@@ -44,7 +45,10 @@ async function main(): Promise<void> {
 		await runLoop(options);
 	} catch (error) {
 		logError(error instanceof Error ? error.message : String(error));
-		process.exit(1);
+		process.exitCode = 1;
+	} finally {
+		// Ensure all progress writes are flushed before exit
+		await flushAllProgressWrites();
 	}
 }
 

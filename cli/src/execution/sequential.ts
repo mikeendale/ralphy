@@ -3,9 +3,10 @@ import type { AIEngine, AIResult } from "../engines/types.ts";
 import { createTaskBranch, returnToBaseBranch } from "../git/branch.ts";
 import { createPullRequest } from "../git/pr.ts";
 import type { Task, TaskSource } from "../tasks/types.ts";
-import { logDebug, logError, logInfo, logSuccess } from "../ui/logger.ts";
+import { logDebug, logError, logInfo, logSuccess, logWarn } from "../ui/logger.ts";
 import { notifyTaskComplete, notifyTaskFailed } from "../ui/notify.ts";
 import { ProgressSpinner } from "../ui/spinner.ts";
+import { clearDeferredTask, recordDeferredTask } from "./deferred.ts";
 import { buildPrompt } from "./prompt.ts";
 import { isRetryableError, sleep, withRetry } from "./retry.ts";
 
@@ -25,12 +26,17 @@ export interface ExecutionOptions {
 	draftPr: boolean;
 	autoCommit: boolean;
 	browserEnabled: "auto" | "true" | "false";
+	prdFile?: string;
 	/** Active settings to display in spinner */
 	activeSettings?: string[];
 	/** Override default model for the engine */
 	modelOverride?: string;
 	/** Skip automatic branch merging after parallel execution */
 	skipMerge?: boolean;
+	/** Use lightweight sandboxes instead of git worktrees for parallel execution */
+	useSandbox?: boolean;
+	/** Additional arguments to pass to the engine CLI */
+	engineArgs?: string[];
 }
 
 export interface ExecutionResult {
@@ -62,6 +68,7 @@ export async function runSequential(options: ExecutionOptions): Promise<Executio
 		browserEnabled,
 		activeSettings,
 		modelOverride,
+		engineArgs,
 	} = options;
 
 	const result: ExecutionResult = {
@@ -72,6 +79,7 @@ export async function runSequential(options: ExecutionOptions): Promise<Executio
 	};
 
 	let iteration = 0;
+	let abortDueToRetryableFailure = false;
 
 	while (true) {
 		// Check iteration limit
@@ -110,6 +118,7 @@ export async function runSequential(options: ExecutionOptions): Promise<Executio
 			browserEnabled,
 			skipTests,
 			skipLint,
+			prdFile: options.prdFile,
 		});
 
 		// Execute with spinner
@@ -125,7 +134,10 @@ export async function runSequential(options: ExecutionOptions): Promise<Executio
 						spinner.updateStep("Working");
 
 						// Use streaming if available
-						const engineOptions = modelOverride ? { modelOverride } : undefined;
+						const engineOptions = {
+							...(modelOverride && { modelOverride }),
+							...(engineArgs && engineArgs.length > 0 && { engineArgs }),
+						};
 						if (engine.executeStreaming) {
 							return await engine.executeStreaming(
 								prompt,
@@ -155,7 +167,7 @@ export async function runSequential(options: ExecutionOptions): Promise<Executio
 				);
 
 				if (aiResult.success) {
-					spinner.success();
+					spinner.success(undefined, true); // Show timing breakdown
 					result.totalInputTokens += aiResult.inputTokens;
 					result.totalOutputTokens += aiResult.outputTokens;
 
@@ -165,6 +177,7 @@ export async function runSequential(options: ExecutionOptions): Promise<Executio
 					result.tasksCompleted++;
 
 					notifyTaskComplete(task.title);
+					clearDeferredTask(taskSource.type, task, workDir, options.prdFile);
 
 					// Create PR if needed
 					if (createPr && branch && baseBranch) {
@@ -182,23 +195,64 @@ export async function runSequential(options: ExecutionOptions): Promise<Executio
 						}
 					}
 				} else {
-					spinner.error(aiResult.error || "Unknown error");
-					logTaskProgress(task.title, "failed", workDir);
-					result.tasksFailed++;
-					notifyTaskFailed(task.title, aiResult.error || "Unknown error");
+					const errMsg = aiResult.error || "Unknown error";
+					if (isRetryableError(errMsg)) {
+						const deferrals = recordDeferredTask(taskSource.type, task, workDir, options.prdFile);
+						spinner.error(errMsg);
+						if (deferrals >= maxRetries) {
+							logError(`Task "${task.title}" failed after ${deferrals} deferrals: ${errMsg}`);
+							logTaskProgress(task.title, "failed", workDir);
+							result.tasksFailed++;
+							notifyTaskFailed(task.title, errMsg);
+							await taskSource.markComplete(task.id);
+							clearDeferredTask(taskSource.type, task, workDir, options.prdFile);
+						} else {
+							logWarn(`Temporary failure, stopping early (${deferrals}/${maxRetries}): ${errMsg}`);
+							result.tasksFailed++;
+							abortDueToRetryableFailure = true;
+						}
+					} else {
+						spinner.error(errMsg);
+						logTaskProgress(task.title, "failed", workDir);
+						result.tasksFailed++;
+						notifyTaskFailed(task.title, errMsg);
+						clearDeferredTask(taskSource.type, task, workDir, options.prdFile);
+					}
 				}
 			} catch (error) {
 				const errorMsg = error instanceof Error ? error.message : String(error);
-				spinner.error(errorMsg);
-				logTaskProgress(task.title, "failed", workDir);
-				result.tasksFailed++;
-				notifyTaskFailed(task.title, errorMsg);
+				if (isRetryableError(errorMsg)) {
+					const deferrals = recordDeferredTask(taskSource.type, task, workDir, options.prdFile);
+					spinner.error(errorMsg);
+					if (deferrals >= maxRetries) {
+						logError(`Task "${task.title}" failed after ${deferrals} deferrals: ${errorMsg}`);
+						logTaskProgress(task.title, "failed", workDir);
+						result.tasksFailed++;
+						notifyTaskFailed(task.title, errorMsg);
+						await taskSource.markComplete(task.id);
+						clearDeferredTask(taskSource.type, task, workDir, options.prdFile);
+					} else {
+						logWarn(`Temporary failure, stopping early (${deferrals}/${maxRetries}): ${errorMsg}`);
+						result.tasksFailed++;
+						abortDueToRetryableFailure = true;
+					}
+				} else {
+					spinner.error(errorMsg);
+					logTaskProgress(task.title, "failed", workDir);
+					result.tasksFailed++;
+					notifyTaskFailed(task.title, errorMsg);
+					clearDeferredTask(taskSource.type, task, workDir, options.prdFile);
+				}
 			}
 		}
 
 		// Return to base branch if we created one
 		if (branchPerTask && baseBranch) {
 			await returnToBaseBranch(baseBranch, workDir);
+		}
+
+		if (abortDueToRetryableFailure) {
+			break;
 		}
 	}
 

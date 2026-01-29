@@ -6,26 +6,6 @@ const isBun = typeof Bun !== "undefined";
 const isWindows = process.platform === "win32";
 
 /**
- * Resolve a command to its full executable path (needed for Windows)
- */
-function resolveCommand(command: string): string {
-	if (!isWindows) return command;
-	try {
-		const result = spawnSync("where", [command], { encoding: "utf8", stdio: "pipe" });
-		if (result.status !== 0) return command;
-		const paths = result.stdout.trim().split(/\r?\n/);
-		// Prefer .cmd files over .ps1 since Bun cannot spawn .ps1 directly
-		const cmdPath = paths.find((p) => p.toLowerCase().endsWith(".cmd"));
-		if (cmdPath) return cmdPath;
-		// Fall back to first non-.ps1 path, or first path if all are .ps1
-		const nonPs1Path = paths.find((p) => !p.toLowerCase().endsWith(".ps1"));
-		return nonPs1Path || paths[0] || command;
-	} catch {
-		return command;
-	}
-}
-
-/**
  * Check if a command is available in PATH
  */
 export async function commandExists(command: string): Promise<boolean> {
@@ -49,21 +29,31 @@ export async function commandExists(command: string): Promise<boolean> {
 
 /**
  * Execute a command and return stdout
+ * @param stdinContent - Optional content to pass via stdin (useful for multi-line prompts on Windows)
  */
 export async function execCommand(
 	command: string,
 	args: string[],
 	workDir: string,
 	env?: Record<string, string>,
+	stdinContent?: string,
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
 	if (isBun) {
-		const resolvedCommand = resolveCommand(command);
-		const proc = Bun.spawn([resolvedCommand, ...args], {
+		// On Windows, run through cmd.exe to handle .cmd wrappers (npm global packages)
+		const spawnArgs = isWindows ? ["cmd.exe", "/c", command, ...args] : [command, ...args];
+		const proc = Bun.spawn(spawnArgs, {
 			cwd: workDir,
+			stdin: stdinContent ? "pipe" : "ignore",
 			stdout: "pipe",
 			stderr: "pipe",
 			env: { ...process.env, ...env },
 		});
+
+		// Write stdin content if provided
+		if (stdinContent && proc.stdin) {
+			proc.stdin.write(stdinContent);
+			proc.stdin.end();
+		}
 
 		const [stdout, stderr, exitCode] = await Promise.all([
 			new Response(proc.stdout).text(),
@@ -74,14 +64,20 @@ export async function execCommand(
 		return { stdout, stderr, exitCode };
 	}
 
-	// Node.js fallback - resolve full path on Windows to avoid shell
-	const resolvedCommand = resolveCommand(command);
+	// Node.js fallback - use shell on Windows to execute .cmd wrappers
 	return new Promise((resolve) => {
-		const proc = spawn(resolvedCommand, args, {
+		const proc = spawn(command, args, {
 			cwd: workDir,
 			env: { ...process.env, ...env },
-			stdio: ["ignore", "pipe", "pipe"], // Close stdin, pipe stdout/stderr
+			stdio: [stdinContent ? "pipe" : "ignore", "pipe", "pipe"],
+			shell: isWindows, // Required on Windows for npm global commands (.cmd wrappers)
 		});
+
+		// Write stdin content if provided
+		if (stdinContent && proc.stdin) {
+			proc.stdin.write(stdinContent);
+			proc.stdin.end();
+		}
 
 		let stdout = "";
 		let stderr = "";
@@ -98,7 +94,9 @@ export async function execCommand(
 			resolve({ stdout, stderr, exitCode: exitCode ?? 1 });
 		});
 
-		proc.on("error", () => {
+		proc.on("error", (err) => {
+			// Maintain backward compatibility - don't reject, include error in stderr
+			stderr += `\nSpawn error: ${err.message}`;
 			resolve({ stdout, stderr, exitCode: 1 });
 		});
 	});
@@ -154,6 +152,20 @@ export function checkForErrors(output: string): string | null {
 }
 
 /**
+ * Format a command failure with useful output context.
+ */
+export function formatCommandError(exitCode: number, output: string): string {
+	const trimmed = output.trim();
+	if (!trimmed) {
+		return `Command failed with exit code ${exitCode}`;
+	}
+
+	const lines = trimmed.split("\n").filter(Boolean);
+	const snippet = lines.slice(-12).join("\n");
+	return `Command failed with exit code ${exitCode}. Output:\n${snippet}`;
+}
+
+/**
  * Read a stream line by line, calling onLine for each non-empty line
  */
 async function readStream(
@@ -182,6 +194,7 @@ async function readStream(
 
 /**
  * Execute a command with streaming output, calling onLine for each line
+ * @param stdinContent - Optional content to pass via stdin (useful for multi-line prompts on Windows)
  */
 export async function execCommandStreaming(
 	command: string,
@@ -189,15 +202,24 @@ export async function execCommandStreaming(
 	workDir: string,
 	onLine: (line: string) => void,
 	env?: Record<string, string>,
+	stdinContent?: string,
 ): Promise<{ exitCode: number }> {
 	if (isBun) {
-		const resolvedCommand = resolveCommand(command);
-		const proc = Bun.spawn([resolvedCommand, ...args], {
+		// On Windows, run through cmd.exe to handle .cmd wrappers (npm global packages)
+		const spawnArgs = isWindows ? ["cmd.exe", "/c", command, ...args] : [command, ...args];
+		const proc = Bun.spawn(spawnArgs, {
 			cwd: workDir,
+			stdin: stdinContent ? "pipe" : "ignore",
 			stdout: "pipe",
 			stderr: "pipe",
 			env: { ...process.env, ...env },
 		});
+
+		// Write stdin content if provided
+		if (stdinContent && proc.stdin) {
+			proc.stdin.write(stdinContent);
+			proc.stdin.end();
+		}
 
 		// Process both stdout and stderr in parallel
 		await Promise.all([readStream(proc.stdout, onLine), readStream(proc.stderr, onLine)]);
@@ -206,14 +228,20 @@ export async function execCommandStreaming(
 		return { exitCode };
 	}
 
-	// Node.js fallback - resolve full path on Windows to avoid shell
-	const resolvedCommand = resolveCommand(command);
+	// Node.js fallback - use shell on Windows to execute .cmd wrappers
 	return new Promise((resolve) => {
-		const proc = spawn(resolvedCommand, args, {
+		const proc = spawn(command, args, {
 			cwd: workDir,
 			env: { ...process.env, ...env },
-			stdio: ["ignore", "pipe", "pipe"], // Close stdin, pipe stdout/stderr
+			stdio: [stdinContent ? "pipe" : "ignore", "pipe", "pipe"],
+			shell: isWindows, // Required on Windows for npm global commands (.cmd wrappers)
 		});
+
+		// Write stdin content if provided
+		if (stdinContent && proc.stdin) {
+			proc.stdin.write(stdinContent);
+			proc.stdin.end();
+		}
 
 		let stdoutBuffer = "";
 		let stderrBuffer = "";
@@ -244,7 +272,9 @@ export async function execCommandStreaming(
 			resolve({ exitCode: exitCode ?? 1 });
 		});
 
-		proc.on("error", () => {
+		proc.on("error", (err) => {
+			// Maintain backward compatibility - don't reject, report error via onLine
+			onLine(`Spawn error: ${err.message}`);
 			resolve({ exitCode: 1 });
 		});
 	});

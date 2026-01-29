@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { loadConfig } from "../../config/loader.ts";
 import type { RuntimeOptions } from "../../config/types.ts";
 import { createEngine, isEngineAvailable } from "../../engines/index.ts";
 import type { AIEngineName } from "../../engines/types.ts";
@@ -6,7 +7,8 @@ import { isBrowserAvailable } from "../../execution/browser.ts";
 import { runParallel } from "../../execution/parallel.ts";
 import { type ExecutionResult, runSequential } from "../../execution/sequential.ts";
 import { getDefaultBaseBranch } from "../../git/branch.ts";
-import { createTaskSource } from "../../tasks/index.ts";
+import { sendNotifications } from "../../notifications/webhook.ts";
+import { CachedTaskSource, createTaskSource } from "../../tasks/index.ts";
 import {
 	formatDuration,
 	formatTokens,
@@ -24,6 +26,7 @@ import { buildActiveSettings } from "../../ui/settings.ts";
 export async function runLoop(options: RuntimeOptions): Promise<void> {
 	const workDir = process.cwd();
 	const startTime = Date.now();
+	const config = loadConfig(workDir);
 
 	// Set verbose mode
 	setVerbose(options.verbose);
@@ -57,13 +60,15 @@ export async function runLoop(options: RuntimeOptions): Promise<void> {
 		process.exit(1);
 	}
 
-	// Create task source
-	const taskSource = createTaskSource({
+	// Create task source with caching for better performance
+	// Caching reduces file I/O by loading tasks once and batching writes
+	const innerTaskSource = createTaskSource({
 		type: options.prdSource,
 		filePath: options.prdFile,
 		repo: options.githubRepo,
 		label: options.githubLabel,
 	});
+	const taskSource = new CachedTaskSource(innerTaskSource);
 
 	// Check if there are tasks
 	const remaining = await taskSource.countRemaining();
@@ -76,6 +81,14 @@ export async function runLoop(options: RuntimeOptions): Promise<void> {
 	let baseBranch = options.baseBranch;
 	if ((options.branchPerTask || options.parallel || options.createPr) && !baseBranch) {
 		baseBranch = await getDefaultBaseBranch(workDir);
+
+		// Check if base branch is empty (unborn branch - no commits yet)
+		if (!baseBranch) {
+			logError("Cannot run in parallel/branch mode: repository has no commits yet.");
+			logInfo("Please make an initial commit first:");
+			logInfo('  git add . && git commit -m "Initial commit"');
+			process.exit(1);
+		}
 	}
 
 	logInfo(`Starting Ralphy with ${engine.name}`);
@@ -117,6 +130,10 @@ export async function runLoop(options: RuntimeOptions): Promise<void> {
 			prdFile: options.prdFile,
 			prdIsFolder: options.prdIsFolder,
 			activeSettings,
+			useSandbox: options.useSandbox,
+			modelOverride: options.modelOverride,
+			skipMerge: options.skipMerge,
+			engineArgs: options.engineArgs,
 		});
 	} else {
 		result = await runSequential({
@@ -136,8 +153,16 @@ export async function runLoop(options: RuntimeOptions): Promise<void> {
 			autoCommit: options.autoCommit,
 			browserEnabled: options.browserEnabled,
 			activeSettings,
+			prdFile: options.prdFile,
+			modelOverride: options.modelOverride,
+			skipMerge: options.skipMerge,
+			engineArgs: options.engineArgs,
 		});
 	}
+
+	// Flush any pending task completions to disk and cleanup
+	await taskSource.flush();
+	taskSource.dispose();
 
 	// Summary
 	const duration = Date.now() - startTime;
@@ -151,6 +176,13 @@ export async function runLoop(options: RuntimeOptions): Promise<void> {
 		console.log(`  Tokens:    ${formatTokens(result.totalInputTokens, result.totalOutputTokens)}`);
 	}
 	console.log("=".repeat(50));
+
+	// Send webhook notifications
+	const status = result.tasksFailed > 0 ? "failed" : "completed";
+	await sendNotifications(config, status, {
+		tasksCompleted: result.tasksCompleted,
+		tasksFailed: result.tasksFailed,
+	});
 
 	if (result.tasksCompleted > 0) {
 		notifyAllComplete(result.tasksCompleted);

@@ -1,7 +1,9 @@
 import { existsSync, readFileSync, rmSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
-import { BaseAIEngine, execCommand } from "./base.ts";
+import { BaseAIEngine, execCommand, formatCommandError } from "./base.ts";
 import type { AIResult, EngineOptions } from "./types.ts";
+
+const isWindows = process.platform === "win32";
 
 /**
  * Codex AI Engine
@@ -19,9 +21,26 @@ export class CodexEngine extends BaseAIEngine {
 			if (options?.modelOverride) {
 				args.push("--model", options.modelOverride);
 			}
-			args.push(prompt);
+			// Add any additional engine-specific arguments
+			if (options?.engineArgs && options.engineArgs.length > 0) {
+				args.push(...options.engineArgs);
+			}
 
-			const { stdout, stderr, exitCode } = await execCommand(this.cliCommand, args, workDir);
+			// On Windows, pass prompt via stdin to avoid cmd.exe argument parsing issues with multi-line content
+			let stdinContent: string | undefined;
+			if (isWindows) {
+				stdinContent = prompt;
+			} else {
+				args.push(prompt);
+			}
+
+			const { stdout, stderr, exitCode } = await execCommand(
+				this.cliCommand,
+				args,
+				workDir,
+				undefined,
+				stdinContent,
+			);
 
 			const output = stdout + stderr;
 
@@ -51,8 +70,19 @@ export class CodexEngine extends BaseAIEngine {
 				};
 			}
 
+			// If command failed with non-zero exit code, provide a meaningful error
+			if (exitCode !== 0) {
+				return {
+					success: false,
+					response: response || "Task completed",
+					inputTokens: 0,
+					outputTokens: 0,
+					error: formatCommandError(exitCode, output),
+				};
+			}
+
 			return {
-				success: exitCode === 0,
+				success: true,
 				response: response || "Task completed",
 				inputTokens: 0, // Codex doesn't expose token counts
 				outputTokens: 0,

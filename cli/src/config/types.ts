@@ -11,6 +11,15 @@ export const ProjectSchema = z.object({
 });
 
 /**
+ * Notifications schema for webhook configuration
+ */
+export const NotificationsSchema = z.object({
+	discord_webhook: z.string().default(""),
+	slack_webhook: z.string().default(""),
+	custom_webhook: z.string().default(""),
+});
+
+/**
  * Commands schema
  */
 export const CommandsSchema = z.object({
@@ -23,7 +32,11 @@ export const CommandsSchema = z.object({
  * Boundaries schema
  */
 export const BoundariesSchema = z.object({
-	never_touch: z.array(z.string()).default([]),
+	never_touch: z
+		.array(z.string())
+		.nullable()
+		.transform((v) => v ?? [])
+		.default([]),
 });
 
 /**
@@ -32,8 +45,13 @@ export const BoundariesSchema = z.object({
 export const RalphyConfigSchema = z.object({
 	project: ProjectSchema.default({}),
 	commands: CommandsSchema.default({}),
-	rules: z.array(z.string()).default([]),
+	rules: z
+		.array(z.string())
+		.nullable()
+		.transform((v) => v ?? [])
+		.default([]),
 	boundaries: BoundariesSchema.default({}),
+	notifications: NotificationsSchema.default({}),
 });
 
 /**
@@ -91,6 +109,10 @@ export interface RuntimeOptions {
 	modelOverride?: string;
 	/** Skip automatic branch merging after parallel execution */
 	skipMerge?: boolean;
+	/** Use lightweight sandboxes instead of git worktrees for parallel execution */
+	useSandbox?: boolean;
+	/** Additional arguments to pass to the engine CLI */
+	engineArgs?: string[];
 }
 
 /**
